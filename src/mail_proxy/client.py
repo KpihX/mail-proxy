@@ -7,8 +7,6 @@ stateless SMTP senders. Handlers never touch the transport directly: they use
 verbs to the tick-proxy handlers.
 """
 
-from typing import Any
-
 from .api.imap import IMAPClient
 from .api.smtp import SMTPClient
 from .config import AccountDef, get_account
@@ -67,18 +65,3 @@ class MailClient:
             'poly'
         """
         return SMTPClient(self.account)
-
-    def raw_imaplib(self) -> Any:
-        """Return the raw imaplib connection for expert escape-hatch commands.
-
-        The `raw` action runs on a DEDICATED connection (see actions/raw.py),
-        so this returns the low-level object of the shared connection.
-
-        Returns:
-            Any: The imaplib.IMAP4 instance owned by the shared IMAPClient.
-
-        Examples:
-            >>> MailClient().raw_imaplib() is not None
-            True
-        """
-        return self.imap()._c()._imap
