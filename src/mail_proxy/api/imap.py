@@ -16,9 +16,11 @@ import email.header
 import logging
 import re
 import socket
+from collections.abc import Callable
 from datetime import UTC, datetime
 from email.message import Message as EmailMessage
-from typing import Self
+from functools import wraps
+from typing import Any, Self
 
 import html2text
 import imapclient
@@ -36,6 +38,38 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _guard_imap(func: Callable[..., Any]) -> Callable[..., Any]:
+    """Translate every raw imapclient/socket failure into a clean MailAPIError.
+
+    The transport must never leak raw exceptions: a failed MOVE/STORE/SEARCH
+    (e.g. a read-only mailbox) surfaces as a one-line actionable error, never a
+    stack trace, and never credential data. Already-translated MailAPIErrors
+    pass through untouched.
+
+    Args:
+        func (Callable[..., Any]): A public IMAPClient method.
+
+    Returns:
+        Callable[..., Any]: The wrapped method.
+
+    Examples:
+        >>> @_guard_imap
+        ... def move_messages(self, uids, src, dst): ...
+    """
+
+    @wraps(func)
+    def wrapper(self: IMAPClient, *args: Any, **kwargs: Any) -> Any:
+        try:
+            return func(self, *args, **kwargs)
+        except MailAPIError:
+            raise
+        except (IMAPClientError, OSError) as exc:
+            raise MailAPIError(0, f"IMAP {func.__name__} failed: {exc}") from exc
+
+    return wrapper
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -295,6 +329,7 @@ class IMAPClient:
     # Folder operations
     # ------------------------------------------------------------------
 
+    @_guard_imap
     def list_folders(self) -> list[Folder]:
         """List every IMAP folder of the account.
 
@@ -320,6 +355,7 @@ class IMAPClient:
             )
         return folders
 
+    @_guard_imap
     def get_folder_status(self, folder: str = "INBOX") -> Folder:
         """Return MESSAGES and UNSEEN counts of a folder.
 
@@ -388,6 +424,7 @@ class IMAPClient:
             c += ["KEYWORD", criteria.keyword]
         return c or ["ALL"]
 
+    @_guard_imap
     def search(self, criteria: SearchCriteria) -> list[int]:
         """Return UIDs matching the criteria (single folder, newest first).
 
@@ -407,8 +444,13 @@ class IMAPClient:
         uids = sorted(uids, reverse=True)
         return uids[: criteria.limit]
 
+    @_guard_imap
     def message_exists(self, uid: int, folder: str) -> bool:
         """Whether a UID currently exists in a folder.
+
+        The folder is re-selected before the UID probe: after a move the
+        server-side selected mailbox is still the source folder, and searching
+        there would report the moved UID as absent from its new home.
 
         Args:
             uid (int): The UID to probe.
@@ -424,6 +466,7 @@ class IMAPClient:
             False
         """
         try:
+            self._c().select_folder(folder, readonly=True)
             present = self._c().search(["UID", uid])  # type: ignore[reportArgumentType]
         except IMAPClientError:
             return False
@@ -433,6 +476,7 @@ class IMAPClient:
     # Fetch
     # ------------------------------------------------------------------
 
+    @_guard_imap
     def fetch_summaries(
         self, uids: list[int], folder: str = "INBOX"
     ) -> list[MessageSummary]:
@@ -494,6 +538,7 @@ class IMAPClient:
             reverse=True,
         )
 
+    @_guard_imap
     def fetch_message(self, uid: int, folder: str = "INBOX") -> Message | None:
         """Fetch the full RFC822 message of a UID.
 
@@ -564,6 +609,7 @@ class IMAPClient:
             account_id=self.account.id,
         )
 
+    @_guard_imap
     def fetch_bodies_for_pattern(
         self, uids: list[int], folder: str
     ) -> list[tuple[int, str, str, str]]:
@@ -598,6 +644,7 @@ class IMAPClient:
     # Mutations
     # ------------------------------------------------------------------
 
+    @_guard_imap
     def set_flags(
         self, uids: list[int], folder: str, flags: list[str], add: bool = True
     ) -> None:
@@ -621,6 +668,7 @@ class IMAPClient:
         else:
             self._c().remove_flags(uids, flags)
 
+    @_guard_imap
     def current_flags(self, uids: list[int], folder: str) -> dict[int, list[str]]:
         """Read back the current flags of UIDs (verification read).
 
@@ -645,6 +693,7 @@ class IMAPClient:
             for uid, msg_data in data.items()  # type: ignore[reportGeneralTypeIssues]
         }
 
+    @_guard_imap
     def move_messages(self, uids: list[int], src_folder: str, dst_folder: str) -> None:
         """Move UIDs between folders (MOVE when supported, else COPY+DELETE).
 
@@ -668,6 +717,7 @@ class IMAPClient:
             self._c().delete_messages(uids)
             self._c().expunge()
 
+    @_guard_imap
     def delete_messages(self, uids: list[int], folder: str) -> None:
         """Permanently delete UIDs: mark `\\Deleted` and expunge immediately.
 
@@ -685,6 +735,7 @@ class IMAPClient:
         self._c().delete_messages(uids)
         self._c().expunge()
 
+    @_guard_imap
     def append_message(
         self, folder: str, raw_message: bytes, flags: list[str] | None = None
     ) -> int | None:
@@ -709,6 +760,7 @@ class IMAPClient:
     # Attachment download
     # ------------------------------------------------------------------
 
+    @_guard_imap
     def download_attachment(
         self, uid: int, filename: str, folder: str = "INBOX"
     ) -> tuple[bytes, str]:
@@ -753,6 +805,7 @@ class IMAPClient:
     # Folder management
     # ------------------------------------------------------------------
 
+    @_guard_imap
     def create_folder(self, name: str) -> None:
         """Create a new IMAP folder.
 
@@ -767,6 +820,7 @@ class IMAPClient:
         """
         self._c().create_folder(name)
 
+    @_guard_imap
     def delete_folder(self, name: str) -> None:
         """Delete an IMAP folder (must be empty on some servers).
 
@@ -781,6 +835,7 @@ class IMAPClient:
         """
         self._c().delete_folder(name)
 
+    @_guard_imap
     def rename_folder(self, old_name: str, new_name: str) -> None:
         """Rename an IMAP folder.
 
@@ -796,6 +851,7 @@ class IMAPClient:
         """
         self._c().rename_folder(old_name, new_name)
 
+    @_guard_imap
     def folder_exists(self, name: str) -> bool:
         """Whether a folder exists on the server.
 
@@ -817,6 +873,7 @@ class IMAPClient:
     # Keyword / label management
     # ------------------------------------------------------------------
 
+    @_guard_imap
     def set_keyword(
         self, uids: list[int], folder: str, keyword: str, add: bool = True
     ) -> None:
@@ -840,6 +897,7 @@ class IMAPClient:
         else:
             self._c().remove_flags(uids, [keyword])
 
+    @_guard_imap
     def list_keywords(self, folder: str = "INBOX") -> list[str]:
         """Return user-defined keywords available on a folder (PERMANENTFLAGS).
 
