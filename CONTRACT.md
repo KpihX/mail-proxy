@@ -22,7 +22,7 @@ follows **exactly** the `tick-proxy` model (`$HOME/KpihX-Labs/tick_proxy`):
   SMTP via stdlib `smtplib`, HTML→text via `html2text`)
 - **NO Docker** — explicitly excluded (same decision as `tick-proxy`)
 
-**Location:** `$HOME/KpihX-Labs/mail_proxy/` — sibling of `tick_proxy/`.
+**Location:** `$HOME/KpihX-Labs/mail-proxy/` — sibling of `tick_proxy/`.
 
 ---
 

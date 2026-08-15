@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.1 — 2026-08-15
+
+- **Repo move:** project directory relocated to `$HOME/KpihX-Labs/proxies/mail-proxy/`
+  (renamed from `mail_proxy`) to follow the `xxx-yyy` root-dir naming convention. Package
+  stays `mail_proxy` (underscores, importable); config stays at `~/.config/mail-proxy/`.
+- **Transport hardening (`api/imap.py`):** `_guard_imap` decorator translates every raw
+  imapclient/socket failure into a clean `MailAPIError` across the public `IMAPClient`
+  methods (no stack traces, no credential leakage). `message_exists` now re-selects the
+  folder before the UID probe so a moved UID is not reported absent from its new home.
+- **HITL tests (`test_hitl.py`):** 5 live local HTTP round-trips against the real review
+  server (approve, reject, unknown id 404, timeout) — no browser, no mocking of the server.
+- **Quality gate:** `make check` green — now 95 tests (was 90), ruff clean, pyright 0 errors.
+
 ## 0.1.0 — 2026-08-12
 
 - Full refonte of `mail-mcp` v0.2.4 (25 MCP tools) into a non-MCP CLI on the exact `tick-proxy`

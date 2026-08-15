@@ -1,6 +1,6 @@
 [project]
 name = "mail-proxy"
-version = "0.1.0"
+version = "0.1.1"
 description = "Mail administrative proxy — RPC CLI for IMAP/SMTP accounts, messages, folders and labels"
 requires-python = ">=3.12"
 dependencies = [

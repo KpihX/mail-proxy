@@ -158,7 +158,7 @@ uv tool install --editable .   # development
 ## Development
 
 ```bash
-make check   # smoke + ruff + py_compile + pyright + pytest (90 tests)
+make check   # smoke + ruff + py_compile + pyright + pytest (95 tests)
 make smoke   # CLI + registry integrity (24 actions, 0 duplicates)
 make uv-link # editable install
 ```
