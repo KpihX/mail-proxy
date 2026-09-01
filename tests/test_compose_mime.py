@@ -8,16 +8,20 @@ from mail_proxy.config import AccountDef, ImapEndpoint, SignatureDef, SmtpEndpoi
 
 ACCOUNT = AccountDef(
     id="test",
-    label="Test",
     imap=ImapEndpoint(host="imap.test.fr"),
     smtp=SmtpEndpoint(host="smtp.test.fr"),
     email="me@test.fr",
     display_name="Me Test",
-    signature=SignatureDef(
-        before_logo="Me Test",
-        logo_path="",
-        after_logo="TEST",
-    ),
+    signatures=[
+        SignatureDef(
+            id="sig-test01",
+            name="Test",
+            before_logo="Me Test",
+            image="",
+            after_logo="TEST",
+        ),
+    ],
+    default_signature_id="sig-test01",
 )
 
 

@@ -43,7 +43,7 @@ app_admin = typer.Typer(
 )
 app_admin_auth = typer.Typer(help="Authentication commands: login, status, logout.")
 app_do = typer.Typer(
-    help="RPC actions: inbox-check, message-list, message-send, folder-list, …",
+    help="RPC actions: inbox-check, message-list, message-send, signature-list, …",
     add_completion=False,
     add_help_option=False,
 )
@@ -295,7 +295,7 @@ def _version_callback(value: bool) -> None:
 
 
 def _do_help_callback(value: bool = True) -> None:
-    """Print the compact catalog of all 24 actions, grouped.
+    """Print the compact catalog of all 30 actions, grouped.
 
     Args:
         value (bool): True when help was requested.

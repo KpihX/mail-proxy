@@ -15,6 +15,7 @@ from . import (
     labels,
     messages,
     raw,
+    signatures,
 )
 from .base import ActionDef
 
@@ -25,6 +26,7 @@ _MODULES = (
     folders,
     attachments,
     labels,
+    signatures,
     raw,
 )
 

@@ -13,11 +13,16 @@ TEST_ACCOUNTS = [
         "display_name": "User NAME",
         "aliases": ["x", "polytechnique"],
         "default": True,
-        "signature": {
-            "before_logo": "User NAME",
-            "logo_path": "assets/logo.png",
-            "after_logo": "SCHOOL NAME",
-        },
+        "signatures": [
+            {
+                "id": "sig-poly001",
+                "name": "Work",
+                "before_logo": "User NAME",
+                "image": "",
+                "after_logo": "SCHOOL NAME",
+            },
+        ],
+        "default_signature_id": "sig-poly001",
     },
     {
         "id": "outlook",

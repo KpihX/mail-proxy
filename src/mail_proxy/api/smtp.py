@@ -14,8 +14,9 @@ MIME structure when signature logo is present:
     └── image/png         (logo, Content-ID: sig_logo)
 
 Signature parameter convention (send/reply/forward/build_draft_bytes):
-  "default"   → account's configured signature (logo + text) — factory default
+  "default"   → account's configured default signature (text + image)
   ""          → no signature at all
+  "sig-xxx"   → specific signature by id
   "any text"  → custom plain-text signature, appended as "--\\n<text>" (no logo)
 """
 
@@ -33,7 +34,7 @@ from email.mime.text import MIMEText
 from email.utils import formataddr, formatdate, make_msgid
 from pathlib import Path
 
-from ..config import AccountDef, SignatureDef, api_timeout
+from ..config import SIGNATURES_DIR, AccountDef, SignatureDef, api_timeout
 from ..exceptions import MailAPIError
 from .models import Message
 
@@ -81,18 +82,19 @@ def _sig_html(sig: SignatureDef) -> str:
         str: HTML fragment.
 
     Examples:
-        >>> "<img" in _sig_html(SignatureDef(logo_path="assets/logo.png"))
+        >>> "<img" in _sig_html(SignatureDef(id="s1", image="assets/logo.png"))
         True
-        >>> "John" in _sig_html(SignatureDef(before_logo="John"))
+        >>> "John" in _sig_html(SignatureDef(id="s1", before_logo="John"))
         True
     """
     before = sig.before_logo.strip().replace("\n", "<br>") if sig.before_logo else ""
     after = sig.after_logo.strip().replace("\n", "<br>") if sig.after_logo else ""
 
     logo_html = ""
-    if sig.logo_path:
+    if sig.image:
+        alt_text = sig.name or "Signature logo"
         logo_html = (
-            f'<img src="cid:{_SIG_CID}" alt="Ecole Polytechnique / Institut Polytechnique de Paris"'
+            f'<img src="cid:{_SIG_CID}" alt="{alt_text}"'
             f' style="max-width:280px; display:block; margin:6px 0;">'
         )
 
@@ -106,7 +108,7 @@ def _sig_html(sig: SignatureDef) -> str:
 
 
 def _load_logo(sig: SignatureDef) -> bytes | None:
-    """Load the logo image bytes from the configured path (package-relative).
+    """Load the logo image bytes from the signatures directory.
 
     Args:
         sig (SignatureDef): Signature definition.
@@ -118,9 +120,9 @@ def _load_logo(sig: SignatureDef) -> bytes | None:
         >>> _load_logo(SignatureDef()) is None
         True
     """
-    if not sig.logo_path:
+    if not sig.image:
         return None
-    logo_path = _PKG_DIR / sig.logo_path
+    logo_path = SIGNATURES_DIR / sig.image
     if not logo_path.exists():
         return None
     return logo_path.read_bytes()
@@ -214,7 +216,7 @@ class SMTPClient:
         """Return (plain_sig_block, html_sig_block, logo_bytes).
 
         Args:
-            signature (str): "default" | "" | custom text.
+            signature (str): "default" | "" | "sig-xxx" | custom text.
 
         Returns:
             tuple[str, str, bytes | None]: The three signature ingredients.
@@ -229,9 +231,19 @@ class SMTPClient:
             return "", "", None
 
         if signature == "default":
-            sig = self.account.signature
+            sig = self.account.get_default_signature()
+            if sig is None:
+                return "", "", None
             return _sig_text(sig), _sig_html(sig), _load_logo(sig)
 
+        # Signature ID lookup (e.g. "sig-a1b2c3d4")
+        if signature.startswith("sig-"):
+            sig = self.account.get_signature_by_id(signature)
+            if sig is None:
+                return "", "", None
+            return _sig_text(sig), _sig_html(sig), _load_logo(sig)
+
+        # Custom text signature (ephemeral — not stored)
         plain = f"\n\n--\n{signature.strip()}"
         html = (
             '<hr style="border:none;border-top:1px solid #ccc;margin:16px 0;">'

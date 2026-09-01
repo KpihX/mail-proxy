@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mail-Proxy · Compose Review</title>
+  <link rel="stylesheet" href="/assets/hitl.css">
+  <style>
+    .email-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .email-field label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .email-field input, .email-field textarea {
+      background: #080d18; border: 1px solid var(--border); border-radius: 7px;
+      color: var(--text); font: 14px/1.4 inherit; padding: 8px 10px; width: 100%;
+    }
+    .email-field input:focus, .email-field textarea:focus { border-color: var(--accent); outline: none; }
+    .email-field textarea.body-input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-height: 180px; resize: vertical; }
+    .sig-zone {
+      border: 2px solid var(--accent); border-radius: 10px; padding: 14px;
+      background: var(--surface-raised); margin: 14px 0;
+    }
+    .sig-zone h3 { margin: 0 0 8px; font-size: 13px; color: var(--accent); }
+    .sig-zone .sig-rendered {
+      background: #080d18; border: 1px solid var(--border); border-radius: 7px;
+      padding: 12px; min-height: 40px; font-size: 13px; line-height: 1.5;
+    }
+    .sig-zone .sig-empty { color: var(--muted); font-style: italic; }
+    .attach-list { list-style: none; padding: 0; margin: 0; }
+    .attach-list li { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+    .attach-list li:last-child { border-bottom: none; }
+    .raw-toggle { color: var(--muted); cursor: pointer; font-size: 12px; text-decoration: underline; margin-top: 8px; display: inline-block; }
+  </style>
+</head>
+<body>
+<script type="application/json" id="payload-data">{{PAYLOAD_JSON}}</script>
+
+<header class="hitl-header">
+  <div>
+    <h1 class="hitl-brand">✉ Mail-Proxy · Compose Review</h1>
+    <p class="hitl-subtitle">{{FUNC_NAME}}</p>
+  </div>
+  <div class="hitl-actions">
+    <button class="hitl-button hitl-reject" onclick="submit('rejected')">✕ Reject</button>
+    <button class="hitl-button hitl-approve" onclick="submit('approved')">✓ Approve</button>
+  </div>
+</header>
+
+<main class="hitl-container">
+  <!-- Email fields -->
+  <section class="hitl-card">
+    <h2>📧 Email Fields <span class="field-label">editable</span></h2>
+    <div class="hitl-card-body">
+      <div class="email-field">
+        <label>To</label>
+        <input type="text" id="field-to" placeholder="recipient@example.com">
+      </div>
+      <div class="email-field">
+        <label>CC</label>
+        <input type="text" id="field-cc" placeholder="cc@example.com (optional)">
+      </div>
+      <div class="email-field">
+        <label>BCC</label>
+        <input type="text" id="field-bcc" placeholder="bcc@example.com (optional)">
+      </div>
+      <div class="email-field">
+        <label>Subject</label>
+        <input type="text" id="field-subject" placeholder="Subject line">
+      </div>
+    </div>
+  </section>
+
+  <!-- Body -->
+  <section class="hitl-card">
+    <h2>📝 Body <span class="field-label">plain text · editable</span></h2>
+    <div class="hitl-card-body">
+      <div class="email-field">
+        <textarea class="body-input" id="field-body" placeholder="Message body…"></textarea>
+      </div>
+    </div>
+  </section>
+
+  <!-- Signature zone -->
+  <section class="sig-zone" id="sig-zone">
+    <h3>✍ Signature</h3>
+    <div class="sig-rendered" id="sig-rendered"></div>
+  </section>
+
+  <!-- Attachments -->
+  <section class="hitl-card" id="attachments-card" style="display:none">
+    <h2>📎 Attachments <span class="field-label" id="attach-count"></span></h2>
+    <div class="hitl-card-body">
+      <ul class="attach-list" id="attach-list"></ul>
+    </div>
+  </section>
+
+  <!-- Raw JSON -->
+  <section class="hitl-card">
+    <h2>📋 Raw JSON <span class="field-label">editable · this complete object is submitted</span></h2>
+    <div class="hitl-card-body">
+      <span class="raw-toggle" onclick="toggleRaw()">Show/hide raw JSON</span>
+      <textarea class="hitl-input" id="payload" rows="18" style="display:none;margin-top:10px"></textarea>
+    </div>
+  </section>
+</main>
+
+<footer class="hitl-footer">
+  <textarea class="hitl-input" id="comment" placeholder="Comment (optional)" rows="2"></textarea>
+</footer>
+
+<script>
+var ORIGINAL, payload;
+try {
+  payload = JSON.parse(document.getElementById('payload-data').textContent);
+  ORIGINAL = JSON.parse(JSON.stringify(payload));
+} catch(e) {
+  payload = {};
+  ORIGINAL = {};
+}
+
+// Populate email fields from payload
+function populateFields() {
+  document.getElementById('field-to').value = listToStr(payload.to);
+  document.getElementById('field-cc').value = listToStr(payload.cc);
+  document.getElementById('field-bcc').value = listToStr(payload.bcc);
+  document.getElementById('field-subject').value = payload.subject || '';
+  document.getElementById('field-body').value = payload.body_text || '';
+  renderSignature(payload.signature || 'default');
+  renderAttachments(payload.attachments);
+}
+
+function listToStr(v) {
+  if (!v) return '';
+  if (Array.isArray(v)) return v.join(', ');
+  return String(v);
+}
+
+function strToList(s) {
+  if (!s || !s.trim()) return null;
+  return s.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+}
+
+function renderSignature(sig) {
+  var el = document.getElementById('sig-rendered');
+  if (!sig || sig === '') {
+    el.innerHTML = '<span class="sig-empty">No signature</span>';
+  } else if (sig === 'default') {
+    el.innerHTML = '<span style="color:var(--accent)">Using default signature</span>';
+  } else if (sig.startsWith && sig.startsWith('sig-')) {
+    el.innerHTML = '<span style="color:var(--accent)">Using signature: ' + sig + '</span>';
+  } else {
+    el.innerHTML = '<div style="border-top:1px solid #ccc;padding-top:8px;font-size:12px;color:#333;">' +
+      sig.replace(/\n/g, '<br>') + '</div>';
+  }
+}
+
+function renderAttachments(files) {
+  var card = document.getElementById('attachments-card');
+  var list = document.getElementById('attach-list');
+  var count = document.getElementById('attach-count');
+  if (!files || files.length === 0) {
+    card.style.display = 'none';
+    return;
+  }
+  card.style.display = 'block';
+  count.textContent = files.length + ' file(s)';
+  list.innerHTML = '';
+  for (var i = 0; i < files.length; i++) {
+    var li = document.createElement('li');
+    li.textContent = files[i];
+    list.appendChild(li);
+  }
+}
+
+function gatherPayload() {
+  var p = JSON.parse(JSON.stringify(ORIGINAL));
+  var to = strToList(document.getElementById('field-to').value);
+  if (to) p.to = to;
+  var cc = strToList(document.getElementById('field-cc').value);
+  p.cc = cc;
+  var bcc = strToList(document.getElementById('field-bcc').value);
+  p.bcc = bcc;
+  var subj = document.getElementById('field-subject').value.trim();
+  if (subj) p.subject = subj;
+  var body = document.getElementById('field-body').value;
+  p.body_text = body;
+  return p;
+}
+
+function toggleRaw() {
+  var el = document.getElementById('payload');
+  if (el.style.display === 'none') {
+    el.value = JSON.stringify(gatherPayload(), null, 2);
+    el.style.display = 'block';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
+document.getElementById('field-to').addEventListener('input', function() {
+  payload.to = strToList(this.value);
+});
+document.getElementById('field-cc').addEventListener('input', function() {
+  payload.cc = strToList(this.value);
+});
+document.getElementById('field-bcc').addEventListener('input', function() {
+  payload.bcc = strToList(this.value);
+});
+document.getElementById('field-subject').addEventListener('input', function() {
+  payload.subject = this.value;
+});
+document.getElementById('field-body').addEventListener('input', function() {
+  payload.body_text = this.value;
+});
+
+populateFields();
+
+async function submit(s) {
+  var p = gatherPayload();
+  var c = document.getElementById('comment').value;
+  var edited = JSON.stringify(p) !== JSON.stringify(ORIGINAL);
+  var r = await fetch('/submit', {
+    method: 'POST',
+    body: JSON.stringify({
+      id: '{{REQUEST_ID}}',
+      status: s,
+      comment: c,
+      payload: p,
+      edited: edited
+    })
+  });
+  if (r.ok) {
+    document.body.innerHTML = '<div class="hitl-done"><h2>' +
+      (s === 'approved' ? '✅ APPROVED' : '❌ REJECTED') +
+      '</h2><p style="opacity:.6">Close this window.</p></div>';
+  }
+}
+</script>
+</body>
+</html>

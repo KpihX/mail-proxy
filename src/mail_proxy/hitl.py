@@ -34,6 +34,10 @@ STYLESHEET_PATH = TEMPLATES_DIR / "hitl.css"
 # Action → custom template mapping (fallback to hitl.html when not listed)
 _ACTION_TEMPLATES: dict[str, Path] = {
     "admin auth login": TEMPLATES_DIR / "auth_login.html",
+    "message-send": TEMPLATES_DIR / "message-review.html",
+    "message-reply": TEMPLATES_DIR / "message-review.html",
+    "message-forward": TEMPLATES_DIR / "message-review.html",
+    "message-draft": TEMPLATES_DIR / "message-review.html",
 }
 
 

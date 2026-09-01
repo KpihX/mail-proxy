@@ -5,9 +5,10 @@ Architecture (KπX directive 2026-09-01):
   - ~/.config/mail-proxy/accounts.json  = account definitions (NOT secrets)
   - ~/.config/mail-proxy/.env           = secrets ONLY (passwords, chmod 600)
   - ~/.config/mail-proxy/tokens/<id>.json = OAuth2 tokens (chmod 600)
+  - ~/.config/mail-proxy/assets/signatures/ = signature images (flat dir)
   - src/mail_proxy/config.py            = EMAIL_PROVIDER_DEFAULTS + load logic
 
-An account = email + aliases + display_name + optional IMAP/SMTP overrides.
+An account = email + aliases + display_name + optional IMAP/SMTP overrides + signatures.
 The IMAP/SMTP endpoints are AUTO-DETECTED from the email domain using
 EMAIL_PROVIDER_DEFAULTS. Custom or private servers override with explicit
 imap_host/smtp_host in the JSON.
@@ -16,11 +17,20 @@ Resolution by `-a` flag: id → alias → email prefix → error.
 Password policy (KπX directive, same as tick-proxy): credentials are NEVER
 committed. The .env holds only MAIL_<ID>_PASS per account, all chmod 600.
 OAuth2 tokens live in separate files under tokens/ — never in .env or JSON.
+
+Signature system (KπX directive 2026-09-01):
+  - Multiple signatures per account, one marked as default via default_signature_id.
+  - Images stored in ~/.config/mail-proxy/assets/signatures/ (deduped by SHA256).
+  - Auto-generated IDs: sig-{uuid4().hex[:8]} — never manual.
+  - Migration: old `signature: {}` → auto-converted to `signatures: []` + `default_signature_id`.
 """
 
+import hashlib
 import json
 import logging
 import os
+import shutil
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -33,6 +43,7 @@ logger = logging.getLogger(__name__)
 CONFIG_DIR = Path.home() / ".config" / "mail-proxy"
 ENV_PATH = CONFIG_DIR / ".env"
 ACCOUNTS_JSON_PATH = CONFIG_DIR / "accounts.json"
+SIGNATURES_DIR = CONFIG_DIR / "assets" / "signatures"
 
 # ── Permissions (single source of truth) ──────────────────────────────────────
 DIR_PERMISSIONS = 0o700
@@ -182,19 +193,23 @@ class SignatureDef(BaseModel):
     """E-mail signature shown below the body of composed messages.
 
     Attributes:
+        id (str): Auto-generated unique id, e.g. `sig-a1b2c3d4`.
+        name (str): Human-readable label, e.g. "Work signature".
         before_logo (str): Text lines above the logo image.
-        logo_path (str): Logo file relative to the package dir ("" = none).
+        image (str): Filename in ~/.config/mail-proxy/assets/signatures/ ("" = none).
         after_logo (str): Text lines below the logo image.
 
     Examples:
-        >>> SignatureDef(before_logo="John Doe", after_logo="ACME Corp").before_logo
-        'John Doe'
-        >>> SignatureDef().logo_path
+        >>> SignatureDef(id="sig-1", name="Work", before_logo="John Doe").name
+        'Work'
+        >>> SignatureDef().image
         ''
     """
 
+    id: str = ""
+    name: str = ""
     before_logo: str = ""
-    logo_path: str = ""
+    image: str = ""
     after_logo: str = ""
 
 
@@ -229,7 +244,8 @@ class AccountDef(BaseModel):
         smtp_host (str | None): SMTP hostname override; None → auto-detect.
         smtp_port (int | None): SMTP port override; None → default (587).
         smtp_starttls (bool | None): SMTP STARTTLS override; None → default.
-        signature (SignatureDef): Signature block of this account.
+        signatures (list[SignatureDef]): All signatures for this account.
+        default_signature_id (str): ID of the default signature ("" → first found).
         default (bool): True = used when `account_id` is omitted.
         imap (ImapEndpoint): Resolved IMAP endpoint (filled by load_accounts).
         smtp (SmtpEndpoint): Resolved SMTP endpoint (filled by load_accounts).
@@ -261,13 +277,62 @@ class AccountDef(BaseModel):
     smtp_host: str | None = None
     smtp_port: int | None = None
     smtp_starttls: bool | None = None
-    signature: SignatureDef = Field(default_factory=SignatureDef)
+    signatures: list[SignatureDef] = Field(default_factory=list)
+    default_signature_id: str = ""
     default: bool = False
     # Resolved at runtime — filled by load_accounts() and resolve_account().
     imap: ImapEndpoint = Field(default_factory=lambda: ImapEndpoint(host="localhost"))
     smtp: SmtpEndpoint = Field(default_factory=lambda: SmtpEndpoint(host="localhost"))
     username: str = Field(default="", exclude=True)
     password: str = Field(default="", exclude=True)
+
+    def get_default_signature(self) -> SignatureDef | None:
+        """Return the default signature, or first found, or None.
+
+        Resolution order:
+          1. Match by default_signature_id
+          2. First signature in the list
+          3. None (no signatures)
+
+        Returns:
+            SignatureDef | None: The resolved signature, or None.
+
+        Examples:
+            >>> a = AccountDef(id="x", email="a@b.com", imap=ImapEndpoint(host="i"), smtp=SmtpEndpoint(host="s"), signatures=[SignatureDef(id="s1", name="Work")])
+            >>> a.get_default_signature().id
+            's1'
+            >>> a = AccountDef(id="x", email="a@b.com", imap=ImapEndpoint(host="i"), smtp=SmtpEndpoint(host="s"), default_signature_id="s2", signatures=[SignatureDef(id="s1"), SignatureDef(id="s2")])
+            >>> a.get_default_signature().id
+            's2'
+            >>> AccountDef(id="x", email="a@b.com", imap=ImapEndpoint(host="i"), smtp=SmtpEndpoint(host="s")).get_default_signature() is None
+            True
+        """
+        if self.default_signature_id:
+            for sig in self.signatures:
+                if sig.id == self.default_signature_id:
+                    return sig
+        return self.signatures[0] if self.signatures else None
+
+    def get_signature_by_id(self, sig_id: str) -> SignatureDef | None:
+        """Return a signature by its id, or None.
+
+        Args:
+            sig_id (str): The signature id to look up.
+
+        Returns:
+            SignatureDef | None: The matching signature, or None.
+
+        Examples:
+            >>> a = AccountDef(id="x", email="a@b.com", imap=ImapEndpoint(host="i"), smtp=SmtpEndpoint(host="s"), signatures=[SignatureDef(id="s1", name="Work")])
+            >>> a.get_signature_by_id("s1").name
+            'Work'
+            >>> a.get_signature_by_id("nope") is None
+            True
+        """
+        for sig in self.signatures:
+            if sig.id == sig_id:
+                return sig
+        return None
 
     @property
     def from_address(self) -> str:
@@ -471,6 +536,38 @@ def load_accounts(force: bool = False) -> list[AccountDef]:
                 exc,
             )
             continue
+
+        # Migration: old `signature: {}` → new `signatures: []` + `default_signature_id`
+        signatures: list[SignatureDef] = []
+        default_signature_id = entry.get("default_signature_id", "")
+        if "signatures" in entry and isinstance(entry["signatures"], list):
+            for sig_data in entry["signatures"]:
+                if isinstance(sig_data, dict):
+                    signatures.append(SignatureDef(**sig_data))
+        elif "signature" in entry and isinstance(entry["signature"], dict):
+            old_sig = entry["signature"]
+            if (
+                old_sig.get("before_logo")
+                or old_sig.get("after_logo")
+                or old_sig.get("logo_path")
+            ):
+                new_id = f"sig-{uuid.uuid4().hex[:8]}"
+                signatures.append(
+                    SignatureDef(
+                        id=new_id,
+                        name="Default",
+                        before_logo=old_sig.get("before_logo", ""),
+                        image=old_sig.get("logo_path", ""),
+                        after_logo=old_sig.get("after_logo", ""),
+                    )
+                )
+                default_signature_id = new_id
+                logger.info(
+                    "Migrated old signature for account %r → sig %s",
+                    entry.get("id"),
+                    new_id,
+                )
+
         account = AccountDef(
             id=entry["id"],
             email=entry["email"],
@@ -482,7 +579,8 @@ def load_accounts(force: bool = False) -> list[AccountDef]:
             oauth2_provider=entry.get("oauth2_provider", ""),
             imap=imap,
             smtp=smtp,
-            signature=SignatureDef(**entry.get("signature", {})),
+            signatures=signatures,
+            default_signature_id=default_signature_id,
             default=entry.get("default", False),
         )
         accounts.append(account)
@@ -536,16 +634,21 @@ def write_accounts_json(accounts: list[AccountDef]) -> None:
             entry["imap_host"] = a.imap_host
         if a.smtp_host:
             entry["smtp_host"] = a.smtp_host
-        if a.signature and (
-            a.signature.before_logo or a.signature.after_logo or a.signature.logo_path
-        ):
-            entry["signature"] = {}
-            if a.signature.before_logo:
-                entry["signature"]["before_logo"] = a.signature.before_logo
-            if a.signature.logo_path:
-                entry["signature"]["logo_path"] = a.signature.logo_path
-            if a.signature.after_logo:
-                entry["signature"]["after_logo"] = a.signature.after_logo
+        if a.signatures:
+            entry["signatures"] = []
+            for sig in a.signatures:
+                sig_entry: dict[str, str] = {"id": sig.id}
+                if sig.name:
+                    sig_entry["name"] = sig.name
+                if sig.before_logo:
+                    sig_entry["before_logo"] = sig.before_logo
+                if sig.image:
+                    sig_entry["image"] = sig.image
+                if sig.after_logo:
+                    sig_entry["after_logo"] = sig.after_logo
+                entry["signatures"].append(sig_entry)
+        if a.default_signature_id:
+            entry["default_signature_id"] = a.default_signature_id
         data.append(entry)
 
     ACCOUNTS_JSON_PATH.write_text(
@@ -870,3 +973,60 @@ def list_accounts() -> list[dict[str, str | bool | list[str]]]:
         }
         for a in accounts
     ]
+
+
+# ── Signature image helpers ──────────────────────────────────────────────────
+
+
+def get_signatures_dir() -> Path:
+    """Return ~/.config/mail-proxy/assets/signatures/, creating if needed.
+
+    Returns:
+        Path: The signatures directory (created lazily).
+
+    Examples:
+        >>> get_signatures_dir().name
+        'signatures'
+        >>> get_signatures_dir().exists()
+        True
+    """
+    SIGNATURES_DIR.mkdir(parents=True, exist_ok=True)
+    return SIGNATURES_DIR
+
+
+def copy_signature_image(source_path: str) -> str:
+    """Copy an image to the signatures dir, deduplicated by SHA256.
+
+    If an image with the same content already exists, the existing filename
+    is returned without creating a duplicate.
+
+    Args:
+        source_path (str): Absolute path to the source image file.
+
+    Returns:
+        str: The stored filename (basename in the signatures dir).
+
+    Raises:
+        MailProxyError: When the source file does not exist.
+
+    Examples:
+        >>> copy_signature_image("/tmp/nonexistent.png")
+        Traceback (most recent call last):
+            ...
+        mail_proxy.exceptions.MailProxyError: Source image not found: /tmp/nonexistent.png
+    """
+    source = Path(source_path)
+    if not source.exists():
+        raise MailProxyError(f"Source image not found: {source_path}")
+
+    content = source.read_bytes()
+    sha256 = hashlib.sha256(content).hexdigest()
+    suffix = source.suffix or ".png"
+    target_name = f"{sha256}{suffix}"
+    target_dir = get_signatures_dir()
+    target_path = target_dir / target_name
+
+    if not target_path.exists():
+        shutil.copy2(source, target_path)
+
+    return target_name

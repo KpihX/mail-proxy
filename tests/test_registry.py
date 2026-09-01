@@ -1,8 +1,8 @@
-"""Registry integrity — the anti-drift gate for the 24 actions."""
+"""Registry integrity — the anti-drift gate for the 30 actions."""
 
 from mail_proxy.actions.registry import REGISTRY, by_group
 
-EXPECTED_ACTIONS = 24
+EXPECTED_ACTIONS = 30
 REQUIRE_VERIFICATION = {
     "label-set",
     "message-mark",
