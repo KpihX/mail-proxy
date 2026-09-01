@@ -32,13 +32,13 @@ class Address(BaseModel):
     """An e-mail address with an optional display name.
 
     Attributes:
-        name (str): Display name, e.g. `Ivann KAMDEM POUOKAM`.
-        email (str): Bare address, e.g. `ivann.kamdem-pouokam@polytechnique.edu`.
+        name (str): Display name, e.g. `John Doe`.
+        email (str): Bare address, e.g. `user@example.com`.
 
     Examples:
-        >>> Address(name="Ivann KAMDEM POUOKAM", email="ivann@polytechnique.edu").email
-        'ivann@polytechnique.edu'
-        >>> Address(email="x@y.fr").name
+        >>> Address(name="User Name", email="user@example.com").email
+        'user@example.com'
+        >>> Address(name="", email="").email
         ''
     """
 

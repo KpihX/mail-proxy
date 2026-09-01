@@ -31,6 +31,11 @@ TEMPLATES_DIR = Path(__file__).parent / "templates"
 TEMPLATE_PATH = TEMPLATES_DIR / "hitl.html"
 STYLESHEET_PATH = TEMPLATES_DIR / "hitl.css"
 
+# Action → custom template mapping (fallback to hitl.html when not listed)
+_ACTION_TEMPLATES: dict[str, Path] = {
+    "admin auth login": TEMPLATES_DIR / "auth_login.html",
+}
+
 
 class HITLResponse:
     """The outcome of one HITL review.
@@ -178,7 +183,9 @@ class HITLServer(BaseHTTPRequestHandler):
             payload_display = safe
             payload_safe = safe[:100]
         try:
-            html = TEMPLATE_PATH.read_text()
+            action = req.get("func_name", "")
+            template = _ACTION_TEMPLATES.get(action, TEMPLATE_PATH)
+            html = template.read_text()
         except FileNotFoundError:
             return f"<html><body><h2>Template not found: {TEMPLATE_PATH}</h2></body></html>"
         html = html.replace("{{FUNC_NAME}}", req.get("func_name", "unknown"))

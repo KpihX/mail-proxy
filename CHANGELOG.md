@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.0 — 2026-09-01
+
+- **Multi-account architecture:** accounts moved from hardcoded `AccountDef` list in `config.py`
+  to dynamic `~/.config/mail-proxy/accounts.json`. Any number of accounts per provider, resolved
+  by id → alias → email prefix. IMAP/SMTP endpoints auto-detected from email domain via
+  `EMAIL_PROVIDER_DEFAULTS` (gmail.com, outlook.com, hotmail.com, live.com, polytechnique.edu).
+- **OAuth2 support:** Microsoft (Device Code Flow — no redirect URI, Thunderbird well-known
+  client ID) + Google (Authorization Code Flow). XOAUTH2 for IMAP (`_imap.authenticate`) and
+  SMTP (`AUTH XOAUTH2`). Token store at `~/.config/mail-proxy/tokens/<id>.json` with auto-refresh.
+  App Password remains as fallback for all providers.
+- **Smart HITL form:** dedicated `auth_login.html` template with provider type selector (Gmail /
+  Outlook / Zimbra / Custom), auth method selector (App Password / OAuth2), auto-fill from
+  email domain, existing accounts display chips.
+- **Admin commands reworked:** `doctor` (auto-fix permissions), `status` (unified: accounts +
+  auth state + permissions + IMAP/SMTP probes + issues), `auth login|status|logout` (unified
+  account management — writes both `accounts.json` + `.env` atomically). Removed `setup` (replaced
+  by `auth login`).
+- **Validation before write:** `auth login` validates email domain + endpoint resolution BEFORE
+  any disk write — prevents corrupted `accounts.json` from bad entries.
+- **Secrets-only .env:** login IS the email address from `accounts.json` — `.env` carries only
+  `MAIL_<ID>_PASS` per account. No more `MAIL_*_LOGIN`.
+- **Personal data purge:** zero personal emails/names in `src/` or `tests/`. All examples use
+  generic placeholders.
+- **IMAP XOAUTH2 fix:** `imaplib.authenticate()` expects raw bytes (not base64). Fixed to pass
+  raw XOAUTH2 string (`user=<email>\x01auth=Bearer <token>\x01\x01`) instead of base64-encoded.
+- **Error message cleanup:** removed stale `MAIL_*_LOGIN` references from error messages.
+- **Quality gate:** `make check` green — 127 tests (was 102), ruff clean, pyright 0 errors.
+
 ## 0.1.1 — 2026-08-15
 
 - **Repo move:** project directory relocated to `$HOME/KpihX-Labs/proxies/mail-proxy/`

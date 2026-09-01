@@ -38,7 +38,7 @@ from ..exceptions import MailAPIError
 from .models import Message
 
 _PKG_DIR = Path(__file__).parent.parent  # src/mail_proxy/
-_SIG_CID = "sig_logo_polytechnique"
+_SIG_CID = "sig_logo"
 
 
 # ---------------------------------------------------------------------------
@@ -56,8 +56,8 @@ def _sig_text(sig: SignatureDef) -> str:
         str: Text block prefixed with a `--` separator ("" when empty).
 
     Examples:
-        >>> _sig_text(SignatureDef(before_logo="Ivann KAMDEM", after_logo="X2024"))
-        '\\n\\n--\\nIvann KAMDEM\\nX2024'
+        >>> _sig_text(SignatureDef(before_logo="John Doe", after_logo="ACME"))
+        '\\n\\n--\\nJohn Doe\\nACME'
         >>> _sig_text(SignatureDef())
         ''
     """
@@ -83,7 +83,7 @@ def _sig_html(sig: SignatureDef) -> str:
     Examples:
         >>> "<img" in _sig_html(SignatureDef(logo_path="assets/logo.png"))
         True
-        >>> "Ivann" in _sig_html(SignatureDef(before_logo="Ivann"))
+        >>> "John" in _sig_html(SignatureDef(before_logo="John"))
         True
     """
     before = sig.before_logo.strip().replace("\n", "<br>") if sig.before_logo else ""
@@ -149,6 +149,10 @@ class SMTPClient:
     def _connect(self) -> smtplib.SMTP:
         """Open an authenticated SMTP connection.
 
+        Supports both password auth (``login()``) and OAuth2 (``AUTH XOAUTH2``
+        via raw ``docmd``). For OAuth2, the access token is obtained from the
+        stored token file with automatic refresh.
+
         Returns:
             smtplib.SMTP: Authenticated connection (context-managed).
 
@@ -159,6 +163,7 @@ class SMTPClient:
             >>> SMTPClient(account)._connect()
             <smtplib.SMTP …>
         """
+
         cfg = self.account.smtp
         try:
             if cfg.starttls:
@@ -174,7 +179,18 @@ class SMTPClient:
                 f"Cannot reach SMTP server {cfg.host}:{cfg.port} ({exc}).",
             ) from exc
         try:
-            server.login(self.account.username, self.account.password)
+            if self.account.auth_method == "oauth2":
+                from ..oauth2 import build_xoauth2_string, get_valid_access_token
+
+                access_token = get_valid_access_token(self.account.id)
+                xoauth2_str = build_xoauth2_string(self.account.username, access_token)
+                # SMTP AUTH XOAUTH2 requires a raw command — server.login()
+                # doesn't support XOAUTH2 natively.
+                code, msg = server.docmd("AUTH", "XOAUTH2 " + xoauth2_str)
+                if code not in (235, 334):
+                    raise smtplib.SMTPAuthenticationError(code, msg)
+            else:
+                server.login(self.account.username, self.account.password)
         except smtplib.SMTPAuthenticationError as exc:
             server.close()
             raise MailAPIError(

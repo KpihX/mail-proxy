@@ -316,7 +316,7 @@ def message_info(client: MailClient, p: MessageInfoPayload) -> dict:
     Examples:
         - Full message:
             `mail-proxy do message-info '{"uid":312}'`
-            → {"uid":312,"message_id":"<abc@webmail.polytechnique.fr>","subject":"Re: TP","from":{"name":"Xavier","email":"x@y.fr"},"to":[{"name":"","email":"ivann@polytechnique.edu"}],"cc":[],"date":"2026-08-12T09:00:00+00:00","flags":["\\Seen"],"folder":"INBOX","body_text":"Bonjour, …","attachments":[],"in_reply_to":"<def@webmail.polytechnique.fr>","references":["<def@webmail.polytechnique.fr>"]}
+            → {"uid":312,"message_id":"<abc@webmail.example.com>","subject":"Re: TP","from":{"name":"Xavier","email":"x@y.fr"},"to":[{"name":"","email":"user@example.com"}],"cc":[],"date":"2026-08-12T09:00:00+00:00","flags":["\\Seen"],"folder":"INBOX","body_text":"Bonjour, …","attachments":[],"in_reply_to":"<def@webmail.example.com>","references":["<def@webmail.example.com>"]}
         - Message in Archive:
             `mail-proxy do message-info '{"uid":99,"folder":"Archive"}'`
             → {"uid":99,"message_id":"<ghi@webmail.polytechnique.fr>","subject":"Old mail","from":{"name":"","email":"noreply@x.fr"},"to":[],"cc":[],"date":"2026-07-01T10:00:00+00:00","flags":["\\Seen"],"folder":"Archive","body_text":"…","attachments":[{"filename":"report.pdf","content_type":"application/pdf","size_bytes":2048}],"in_reply_to":"","references":[]}

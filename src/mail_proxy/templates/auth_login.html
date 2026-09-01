@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mail-Proxy — Add Account</title>
+  <link rel="stylesheet" href="/assets/hitl.css">
+  <style>
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-grid .full { grid-column: 1 / -1; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-group input, .form-group select, .form-group textarea { background: #080d18; border: 1px solid var(--border); border-radius: 7px; color: var(--text); font: 14px/1.4 inherit; padding: 10px 12px; }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); outline: none; }
+    .form-group select { cursor: pointer; }
+    .form-group select option { background: #080d18; color: var(--text); }
+    .type-info { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 7px; padding: 10px 14px; font-size: 12px; color: var(--muted); }
+    .type-info code { color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .existing-accounts { background: var(--surface-raised); border: 1px solid var(--border); border-radius: 7px; padding: 10px 14px; margin-bottom: 14px; }
+    .existing-accounts h3 { margin: 0 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; }
+    .existing-accounts .chip { display: inline-block; background: var(--border); border-radius: 4px; padding: 3px 8px; margin: 2px; font-size: 12px; color: var(--text); }
+    .existing-accounts .chip.configured { background: rgba(54,201,141,0.15); color: var(--success); }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    @media (max-width: 720px) { .form-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<script type="application/json" id="payload-data">{{PAYLOAD_JSON}}</script>
+
+<header class="hitl-header">
+  <div>
+    <h1 class="hitl-brand">✉ Mail-Proxy · Add Account</h1>
+    <p class="hitl-subtitle">{{FUNC_NAME}}</p>
+  </div>
+  <div class="hitl-actions">
+    <button class="hitl-button hitl-reject" onclick="submit('rejected')">✕ Cancel</button>
+    <button class="hitl-button hitl-approve" onclick="submit('approved')">✓ Add Account</button>
+  </div>
+</header>
+
+<main class="hitl-container">
+  <!-- Existing accounts -->
+  <div class="existing-accounts" id="existing-accounts" style="display:none">
+    <h3>Existing Accounts</h3>
+    <div id="existing-chips"></div>
+  </div>
+
+  <section class="hitl-card">
+    <h2>📧 Account Configuration <span class="field-label">fill all fields below</span></h2>
+    <div class="hitl-card-body">
+      <div class="form-grid">
+        <!-- Type selector -->
+        <div class="form-group full">
+          <label>Provider Type</label>
+          <select id="provider-type" onchange="onTypeChange()">
+            <option value="">— Select a provider —</option>
+            <option value="google">Google (Gmail / Google Workspace)</option>
+            <option value="microsoft">Microsoft (Outlook / 365 / Hotmail)</option>
+            <option value="custom">Custom (specify hosts manually)</option>
+          </select>
+        </div>
+
+        <!-- Type info -->
+        <div class="type-info full" id="type-info" style="display:none">
+          <div id="type-info-content"></div>
+        </div>
+
+        <!-- Auth method selector -->
+        <div class="form-group full" id="auth-method-group" style="display:none">
+          <label>Authentication Method</label>
+          <div style="display:flex;gap:14px;align-items:center;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--text);">
+              <input type="radio" name="auth_method" value="password" checked onchange="onAuthMethodChange()"> App Password
+            </label>
+            <label id="oauth2-label" style="display:none;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--text);">
+              <input type="radio" name="auth_method" value="oauth2" onchange="onAuthMethodChange()"> OAuth2
+            </label>
+          </div>
+          <div class="hint" id="auth-method-hint">App password — generated from your provider's security settings</div>
+        </div>
+
+        <!-- Email -->
+        <div class="form-group full">
+          <label>Email Address</label>
+          <input type="email" id="email" placeholder="user@example.com" oninput="onEmailChange()">
+          <div class="hint">IMAP/SMTP host will be auto-detected from the domain</div>
+        </div>
+
+        <!-- Account ID -->
+        <div class="form-group">
+          <label>Account ID</label>
+          <input type="text" id="account-id" placeholder="auto-generated from email">
+          <div class="hint">Unique identifier used with <code>-a</code> flag</div>
+        </div>
+
+        <!-- Display name -->
+        <div class="form-group">
+          <label>Display Name</label>
+          <input type="text" id="display-name" placeholder="John Doe">
+        </div>
+
+        <!-- Aliases -->
+        <div class="form-group full">
+          <label>Aliases</label>
+          <input type="text" id="aliases" placeholder="work, personal, … (comma-separated)">
+          <div class="hint">Alternative names for <code>-a</code> flag resolution</div>
+        </div>
+
+        <!-- Password -->
+        <div class="form-group full" id="password-group">
+          <label>Password / App Password</label>
+          <input type="password" id="password" placeholder="••••••••">
+          <div class="hint" id="password-hint">For Gmail/Outlook with MFA: use an <strong>app password</strong>, not your regular password</div>
+        </div>
+
+        <!-- OAuth2 info (shown when OAuth2 is selected) -->
+        <div class="type-info full" id="oauth2-info" style="display:none">
+          <div id="oauth2-info-content">
+            <strong>OAuth2 Authorization</strong><br>
+            When you click "Add Account", your browser will open to authorize mail-proxy.
+            No password will be stored — tokens are stored locally at <code>~/.config/mail-proxy/tokens/</code>.
+          </div>
+        </div>
+
+        <!-- Custom hosts (only for custom type) -->
+        <div class="form-group" id="custom-imap-host" style="display:none">
+          <label>IMAP Host</label>
+          <input type="text" id="imap-host" placeholder="imap.example.com">
+        </div>
+        <div class="form-group" id="custom-smtp-host" style="display:none">
+          <label>SMTP Host</label>
+          <input type="text" id="smtp-host" placeholder="smtp.example.com">
+        </div>
+
+        <!-- Verify now (only for custom type) -->
+        <div class="form-group full" id="verify-now-group" style="display:none">
+          <label>Password (required — used to verify IMAP/SMTP, never saved to disk)</label>
+          <input type="password" id="custom-password" placeholder="••••••••">
+          <div class="hint">Password will be used only for verification against the IMAP/SMTP servers. It is never written to any file. After verification, the password is discarded. You will be prompted again on first use via <code>do</code>.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="hitl-footer">
+  <textarea class="hitl-input" id="comment" placeholder="Comment (optional)" rows="2" style="min-height:42px"></textarea>
+</footer>
+
+<script>
+var ORIGINAL = null;
+var payload = null;
+
+var PROVIDER_INFO = {
+  google:    { imap: 'imap.gmail.com:993 (TLS)', smtp: 'smtp.gmail.com:587 (STARTTLS)', note: 'Works for gmail.com AND Google Workspace custom domains (e.g. @school.org). App password or OAuth2.' },
+  microsoft: { imap: 'outlook.office365.com:993 (TLS)', smtp: 'smtp.office365.com:587 (STARTTLS)', note: 'Works for outlook.com/hotmail AND Microsoft 365 custom domains. OAuth2 recommended (Basic Auth disabled for IMAP).' },
+  custom:    { imap: 'you specify', smtp: 'you specify', note: 'Enter IMAP and SMTP hosts manually below' }
+};
+
+try {
+  payload = JSON.parse(document.getElementById('payload-data').textContent);
+  ORIGINAL = JSON.parse(JSON.stringify(payload));
+  renderExistingAccounts(payload.existing_accounts || []);
+} catch(e) {
+  payload = { existing_accounts: [] };
+  ORIGINAL = {};
+}
+
+function renderExistingAccounts(accounts) {
+  if (!accounts || accounts.length === 0) {
+    document.getElementById('existing-accounts').style.display = 'none';
+    return;
+  }
+  document.getElementById('existing-accounts').style.display = 'block';
+  var chips = document.getElementById('existing-chips');
+  chips.innerHTML = '';
+  for (var i = 0; i < accounts.length; i++) {
+    var a = accounts[i];
+    var chip = document.createElement('span');
+    chip.className = 'chip' + (a.configured ? ' configured' : '');
+    chip.textContent = a.id + ' (' + a.email + ')';
+    chips.appendChild(chip);
+  }
+}
+
+function onTypeChange() {
+  var type = document.getElementById('provider-type').value;
+  var info = document.getElementById('type-info');
+  var infoContent = document.getElementById('type-info-content');
+  var customImap = document.getElementById('custom-imap-host');
+  var customSmtp = document.getElementById('custom-smtp-host');
+  var authGroup = document.getElementById('auth-method-group');
+  var oauth2Label = document.getElementById('oauth2-label');
+  var passwordGroup = document.getElementById('password-group');
+  var verifyNowGroup = document.getElementById('verify-now-group');
+  var oauth2Info = document.getElementById('oauth2-info');
+
+  if (!type) { info.style.display = 'none'; customImap.style.display = 'none'; customSmtp.style.display = 'none'; authGroup.style.display = 'none'; passwordGroup.style.display = 'flex'; verifyNowGroup.style.display = 'none'; oauth2Info.style.display = 'none'; return; }
+
+  var p = PROVIDER_INFO[type];
+  info.style.display = 'block';
+  infoContent.innerHTML = '<strong>' + type.toUpperCase() + '</strong><br>' +
+    'IMAP: <code>' + p.imap + '</code> · SMTP: <code>' + p.smtp + '</code><br>' +
+    '<em>' + p.note + '</em>';
+
+  customImap.style.display = type === 'custom' ? 'flex' : 'none';
+  customSmtp.style.display = type === 'custom' ? 'flex' : 'none';
+
+  if (type === 'custom') {
+    // Custom: no password, no OAuth2 — keyring + TTL on first do
+    authGroup.style.display = 'none';
+    passwordGroup.style.display = 'none';
+    oauth2Info.style.display = 'none';
+    verifyNowGroup.style.display = 'flex';
+  } else {
+    // Google / Microsoft: app password or OAuth2
+    verifyNowGroup.style.display = 'none';
+    var supportsOAuth2 = (type === 'google' || type === 'microsoft');
+    authGroup.style.display = supportsOAuth2 ? 'flex' : 'none';
+    oauth2Label.style.display = supportsOAuth2 ? 'flex' : 'none';
+
+    if (type === 'microsoft') {
+      var oauth2Radio = document.querySelector('input[name="auth_method"][value="oauth2"]');
+      if (oauth2Radio) oauth2Radio.checked = true;
+      onAuthMethodChange();
+    } else {
+      var passwordRadio = document.querySelector('input[name="auth_method"][value="password"]');
+      if (passwordRadio) passwordRadio.checked = true;
+      onAuthMethodChange();
+    }
+  }
+}
+
+function onAuthMethodChange() {
+  var selected = document.querySelector('input[name="auth_method"]:checked');
+  var method = selected ? selected.value : 'password';
+  var passwordGroup = document.getElementById('password-group');
+  var oauth2Info = document.getElementById('oauth2-info');
+  var hint = document.getElementById('auth-method-hint');
+
+  if (method === 'oauth2') {
+    passwordGroup.style.display = 'none';
+    oauth2Info.style.display = 'block';
+    hint.textContent = 'OAuth2 — browser-based authorization, no password stored';
+  } else {
+    passwordGroup.style.display = 'flex';
+    oauth2Info.style.display = 'none';
+    hint.textContent = 'App password — generated from your provider\'s security settings';
+  }
+}
+
+function onEmailChange() {
+  var email = document.getElementById('email').value;
+  var idField = document.getElementById('account-id');
+  if (!idField.dataset.manual) {
+    var prefix = email.split('@')[0] || '';
+    var cleanPrefix = prefix.replace(/[^a-zA-Z0-9._-]/g, '').toLowerCase();
+    idField.value = cleanPrefix;
+  }
+}
+
+document.getElementById('account-id').addEventListener('input', function() {
+  this.dataset.manual = 'true';
+});
+
+async function submit(s) {
+  var type = document.getElementById('provider-type').value;
+  var email = document.getElementById('email').value.trim();
+  var id = document.getElementById('account-id').value.trim();
+  var displayName = document.getElementById('display-name').value.trim();
+  var aliasesStr = document.getElementById('aliases').value.trim();
+  var password = document.getElementById('password').value;
+  var imapHost = document.getElementById('imap-host').value.trim();
+  var smtpHost = document.getElementById('smtp-host').value.trim();
+  var comment = document.getElementById('comment').value;
+
+  var authMethodRadio = document.querySelector('input[name="auth_method"]:checked');
+  var authMethod = authMethodRadio ? authMethodRadio.value : 'password';
+
+  var aliases = aliasesStr ? aliasesStr.split(',').map(function(a) { return a.trim(); }).filter(Boolean) : [];
+
+  // Auto-detect OAuth2 provider from the SELECTED type (not email domain)
+  var oauth2Provider = '';
+  if (authMethod === 'oauth2') {
+    if (type === 'microsoft') {
+      oauth2Provider = 'microsoft';
+    } else if (type === 'google') {
+      oauth2Provider = 'google';
+    }
+  }
+
+  var result = {
+    action: 'auth_login',
+    type: type,
+    id: id,
+    email: email,
+    display_name: displayName,
+    aliases: aliases,
+    password: password,
+    auth_method: authMethod,
+    oauth2_provider: oauth2Provider,
+  };
+  if (type === 'custom') {
+    result.imap_host = imapHost;
+    result.smtp_host = smtpHost;
+    result.password = document.getElementById('custom-password').value;
+  }
+
+  var edited = JSON.stringify(result) !== JSON.stringify(ORIGINAL);
+  var r = await fetch('/submit', {
+    method: 'POST',
+    body: JSON.stringify({
+      id: '{{REQUEST_ID}}',
+      status: s,
+      comment: comment,
+      payload: result,
+      edited: edited
+    })
+  });
+  if (r.ok) {
+    document.body.innerHTML = '<div class="hitl-done"><h2>' +
+      (s === 'approved' ? '✅ ACCOUNT ADDED' : '❌ CANCELLED') +
+      '</h2><p style="opacity:.6">Close this window.</p></div>';
+  }
+}
+</script>
+</body>
+</html>

@@ -115,8 +115,8 @@ def _parse_address_list(raw: str | None) -> list[Address]:
         list[Address]: Parsed addresses.
 
     Examples:
-        >>> _parse_address_list("Ivann <ivann@polytechnique.edu>")[0].email
-        'ivann@polytechnique.edu'
+        >>> _parse_address_list("User <user@example.com>")[0].email
+        'user@example.com'
         >>> _parse_address_list(None)
         []
     """
@@ -241,6 +241,10 @@ class IMAPClient:
     def connect(self) -> IMAPClient:
         """Connect and log in to the IMAP server.
 
+        Supports both password auth (``login()``) and OAuth2 (``XOAUTH2``
+        via ``authenticate()``). For OAuth2, the access token is obtained
+        from the stored token file with automatic refresh.
+
         Returns:
             IMAPClient: self, connected and authenticated.
 
@@ -265,7 +269,16 @@ class IMAPClient:
                 f"Cannot reach IMAP server {cfg.host}:{cfg.port} ({exc}).",
             ) from exc
         try:
-            self._client.login(self.account.username, self.account.password)
+            if self.account.auth_method == "oauth2":
+                from ..oauth2 import get_valid_access_token
+
+                access_token = get_valid_access_token(self.account.id)
+                # imaplib.authenticate() expects raw bytes — it does base64 itself.
+                # XOAUTH2 format: user=<email>\x01auth=Bearer <token>\x01\x01
+                raw_xoauth2 = f"user={self.account.username}\x01auth=Bearer {access_token}\x01\x01".encode()
+                self._client._imap.authenticate("XOAUTH2", lambda _: raw_xoauth2)
+            else:
+                self._client.login(self.account.username, self.account.password)
         except LoginError as exc:
             self._client = None
             raise MailAPIError(

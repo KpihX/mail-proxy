@@ -1,33 +1,138 @@
 """
-Minimal .env config loader for mail-proxy.
+mail-proxy configuration — JSON accounts + email domain detection + secrets-only .env.
 
-Single source of truth: ~/.config/mail-proxy/.env — no config.yaml, no in-repo
-.env, no cache. Account definitions (hosts, ports, e-mail, signature) live here
-as documented constants and every one of their fields is overridable from that
-same .env file.
+Architecture (KπX directive 2026-09-01):
+  - ~/.config/mail-proxy/accounts.json  = account definitions (NOT secrets)
+  - ~/.config/mail-proxy/.env           = secrets ONLY (passwords, chmod 600)
+  - ~/.config/mail-proxy/tokens/<id>.json = OAuth2 tokens (chmod 600)
+  - src/mail_proxy/config.py            = EMAIL_PROVIDER_DEFAULTS + load logic
 
+An account = email + aliases + display_name + optional IMAP/SMTP overrides.
+The IMAP/SMTP endpoints are AUTO-DETECTED from the email domain using
+EMAIL_PROVIDER_DEFAULTS. Custom or private servers override with explicit
+imap_host/smtp_host in the JSON.
+
+Resolution by `-a` flag: id → alias → email prefix → error.
 Password policy (KπX directive, same as tick-proxy): credentials are NEVER
-committed. The .env holds at most the per-account MAIL_<ACCOUNT>_LOGIN and
-MAIL_<ACCOUNT>_PASS pairs plus optional endpoint overrides, all chmod 600.
+committed. The .env holds only MAIL_<ID>_PASS per account, all chmod 600.
+OAuth2 tokens live in separate files under tokens/ — never in .env or JSON.
 """
 
+import json
+import logging
 import os
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 from .exceptions import MailProxyError
 
+logger = logging.getLogger(__name__)
+
 CONFIG_DIR = Path.home() / ".config" / "mail-proxy"
 ENV_PATH = CONFIG_DIR / ".env"
+ACCOUNTS_JSON_PATH = CONFIG_DIR / "accounts.json"
 
 # ── Permissions (single source of truth) ──────────────────────────────────────
 DIR_PERMISSIONS = 0o700
 FILE_PERMISSIONS = 0o600
 
-# ── Endpoint defaults (documented constants, all overridable via .env) ─────────
+# ── Endpoint defaults (documented constants) ───────────────────────────────────
 DEFAULT_TIMEOUT = 15.0
 ENV_TIMEOUT = "MAIL_TIMEOUT"
+DEFAULT_IMAP_PORT = 993
+DEFAULT_SMTP_PORT = 587
+
+# ── Email domain → IMAP/SMTP endpoint auto-detection ───────────────────────────
+#
+# When a JSON account does NOT specify imap_host/smtp_host, the code looks up
+# the email domain here. If not found, the account MUST provide explicit hosts.
+#
+# Each entry: domain → (imap_host, imap_port, imap_tls, smtp_host, smtp_port, smtp_starttls)
+EMAIL_PROVIDER_DEFAULTS: dict[str, tuple[str, int, bool, str, int, bool]] = {
+    "polytechnique.edu": (
+        "webmail.polytechnique.fr",
+        993,
+        True,
+        "webmail.polytechnique.fr",
+        587,
+        True,
+    ),
+    "outlook.com": (
+        "outlook.office365.com",
+        993,
+        True,
+        "smtp.office365.com",
+        587,
+        True,
+    ),
+    "hotmail.com": (
+        "outlook.office365.com",
+        993,
+        True,
+        "smtp.office365.com",
+        587,
+        True,
+    ),
+    "live.com": (
+        "outlook.office365.com",
+        993,
+        True,
+        "smtp.office365.com",
+        587,
+        True,
+    ),
+    "gmail.com": (
+        "imap.gmail.com",
+        993,
+        True,
+        "smtp.gmail.com",
+        587,
+        True,
+    ),
+}
+
+# ── Provider type → endpoint presets (from HITL form type selector) ───────────
+#
+# The provider type SELECTED BY THE USER is the source of truth for endpoints,
+# never the email domain. A Google Workspace account with a custom domain
+# (e.g. user@polytechnique.org) still uses Google's IMAP/SMTP servers.
+#
+# "google"    → imap.gmail.com / smtp.gmail.com   (gmail.com AND Google Workspace custom domains)
+# "microsoft" → outlook.office365.com             (outlook.com AND Microsoft 365 custom domains)
+# "custom"    → user specifies imap_host/smtp_host in the form
+PROVIDER_TYPE_DEFAULTS: dict[str, tuple[str, int, bool, str, int, bool]] = {
+    "google": (
+        "imap.gmail.com",
+        993,
+        True,
+        "smtp.gmail.com",
+        587,
+        True,
+    ),
+    "microsoft": (
+        "outlook.office365.com",
+        993,
+        True,
+        "smtp.office365.com",
+        587,
+        True,
+    ),
+}
+
+# ── OAuth2 provider mapping from email domains ───────────────────────────────
+#
+# When an account uses auth_method="oauth2" and no explicit oauth2_provider is
+# set, the provider is auto-detected from the email domain using this map.
+# Known domains that support OAuth2 for IMAP/SMTP.
+OAUTH2_PROVIDER_MAP: dict[str, str] = {
+    "outlook.com": "microsoft",
+    "hotmail.com": "microsoft",
+    "live.com": "microsoft",
+    "gmail.com": "google",
+}
+
 
 # ── Account definition models ─────────────────────────────────────────────────
 
@@ -48,7 +153,7 @@ class ImapEndpoint(BaseModel):
     """
 
     host: str
-    port: int = 993
+    port: int = DEFAULT_IMAP_PORT
     tls: bool = True
 
 
@@ -69,7 +174,7 @@ class SmtpEndpoint(BaseModel):
     """
 
     host: str
-    port: int = 587
+    port: int = DEFAULT_SMTP_PORT
     starttls: bool = True
 
 
@@ -82,8 +187,8 @@ class SignatureDef(BaseModel):
         after_logo (str): Text lines below the logo image.
 
     Examples:
-        >>> SignatureDef(before_logo="Ivann KAMDEM", after_logo="ÉCOLE POLYTECHNIQUE").before_logo
-        'Ivann KAMDEM'
+        >>> SignatureDef(before_logo="John Doe", after_logo="ACME Corp").before_logo
+        'John Doe'
         >>> SignatureDef().logo_path
         ''
     """
@@ -94,41 +199,73 @@ class SignatureDef(BaseModel):
 
 
 class AccountDef(BaseModel):
-    """One mail account — non-sensitive definition (secrets live in `.env`).
+    """One mail account — non-sensitive definition loaded from `accounts.json`.
 
-    The credential env-var names are derived from the id: `MAIL_<ID_UPPER>_LOGIN`
-    and `MAIL_<ID_UPPER>_PASS` — see `account_env_prefix()`.
+    The credential env-var name is derived from the id: `MAIL_<ID_UPPER>_PASS`
+    (secrets only — the login IS the email address from this definition).
+
+    Accounts can be resolved by id, alias, or email prefix via `get_account()`.
+    IMAP/SMTP endpoints are auto-detected from the email domain when not
+    explicitly overridden in the JSON.
 
     Attributes:
         id (str): Stable account id, used as `account_id` in every action
             payload and as the env prefix, e.g. `poly`.
-        label (str): Human-readable label, e.g. `Polytechnique (X)`.
-        imap (ImapEndpoint): IMAP endpoint.
-        smtp (SmtpEndpoint): SMTP endpoint.
-        email (str): Full address for the From header and SMTP envelope.
+        email (str): Full e-mail address — the login for IMAP/SMTP and the
+            From header address.
         display_name (str): Human name shown in the From header.
+        aliases (tuple[str, ...]): Alternative names for `-a` flag resolution,
+            e.g. `("x", "polytechnique")` for the `poly` account.
+        login (str): IMAP/SMTP login; defaults to `email` when absent.
+            Override only when the server expects a different login
+            (e.g. Exchange `DOMAIN\\user`).
+        auth_method (str): Authentication method — ``"password"`` (default, app
+            password) or ``"oauth2"`` (OAuth2 bearer token via XOAUTH2).
+        oauth2_provider (str): OAuth2 provider name — ``"microsoft"`` or
+            ``"google"``. Auto-detected from email domain when empty.
+        imap_host (str | None): IMAP hostname override; None → auto-detect.
+        imap_port (int | None): IMAP port override; None → default (993).
+        imap_tls (bool | None): IMAP TLS override; None → default (True).
+        smtp_host (str | None): SMTP hostname override; None → auto-detect.
+        smtp_port (int | None): SMTP port override; None → default (587).
+        smtp_starttls (bool | None): SMTP STARTTLS override; None → default.
         signature (SignatureDef): Signature block of this account.
         default (bool): True = used when `account_id` is omitted.
+        imap (ImapEndpoint): Resolved IMAP endpoint (filled by load_accounts).
+        smtp (SmtpEndpoint): Resolved SMTP endpoint (filled by load_accounts).
+        username (str): Resolved login (filled by resolve_account).
+        password (str): Resolved secret (filled by resolve_account).
 
     Examples:
-        >>> AccountDef(id="poly", imap=ImapEndpoint(host="imap.x.fr"),
-        ...             smtp=SmtpEndpoint(host="smtp.x.fr"), default=True).default
-        True
-        >>> AccountDef(id="poly", imap=ImapEndpoint(host="imap.x.fr"),
-        ...             smtp=SmtpEndpoint(host="smtp.x.fr")).id
-        'poly'
+        >>> AccountDef(id="poly", email="a@b.com", imap=ImapEndpoint(host="x"), smtp=SmtpEndpoint(host="y")).email
+        'a@b.com'
+        >>> AccountDef(id="poly", email="a@b.com", imap=ImapEndpoint(host="x"), smtp=SmtpEndpoint(host="y"), aliases=("x",)).aliases
+        ('x',)
+        >>> AccountDef(id="w", email="a@b.com", imap=ImapEndpoint(host="x"), smtp=SmtpEndpoint(host="y"), auth_method="oauth2").auth_method
+        'oauth2'
     """
 
     id: str
-    label: str = ""
-    imap: ImapEndpoint
-    smtp: SmtpEndpoint
-    email: str = ""
+    email: str
     display_name: str = ""
+    aliases: tuple[str, ...] = ()
+    login: str = ""
+    provider_type: str = (
+        ""  # "gmail", "outlook", "zimbra", "" — persisted, used for endpoint resolution
+    )
+    auth_method: str = "password"  # "password" or "oauth2"
+    oauth2_provider: str = ""  # "microsoft" or "google" (auto-detected when empty)
+    imap_host: str | None = None
+    imap_port: int | None = None
+    imap_tls: bool | None = None
+    smtp_host: str | None = None
+    smtp_port: int | None = None
+    smtp_starttls: bool | None = None
     signature: SignatureDef = Field(default_factory=SignatureDef)
     default: bool = False
-    # Resolved at runtime by `resolve_account()` — populated from .env, excluded
-    # from serialization (never dumped anywhere).
+    # Resolved at runtime — filled by load_accounts() and resolve_account().
+    imap: ImapEndpoint = Field(default_factory=lambda: ImapEndpoint(host="localhost"))
+    smtp: SmtpEndpoint = Field(default_factory=lambda: SmtpEndpoint(host="localhost"))
     username: str = Field(default="", exclude=True)
     password: str = Field(default="", exclude=True)
 
@@ -140,44 +277,285 @@ class AccountDef(BaseModel):
             str: The full sender address.
 
         Examples:
-            >>> AccountDef(id="poly", imap=ImapEndpoint(host="imap.x.fr"),
-            ...             smtp=SmtpEndpoint(host="smtp.x.fr"),
-            ...             email="ivann@polytechnique.edu").from_address
-            'ivann@polytechnique.edu'
-            >>> AccountDef(id="poly", imap=ImapEndpoint(host="imap.x.fr"),
-            ...             smtp=SmtpEndpoint(host="smtp.x.fr"),
-            ...             username="ivann").from_address
-            'ivann'
+            >>> AccountDef(id="poly", email="a@poly.edu", imap=ImapEndpoint(host="x"), smtp=SmtpEndpoint(host="y")).from_address
+            'a@poly.edu'
+            >>> AccountDef(id="poly", email="", login="user", imap=ImapEndpoint(host="x"), smtp=SmtpEndpoint(host="y")).from_address
+            'user'
         """
-        return self.email or self.username
+        return self.email or self.username or self.login
 
 
-# ── Account catalog (single source of truth — add an account here) ─────────────
-#
-# Adding an account = one AccountDef below + the matching MAIL_<ID>_LOGIN and
-# MAIL_<ID>_PASS keys in ~/.config/mail-proxy/.env (see .env.example). Hosts,
-# ports, e-mail and display name can each be overridden per account with
-# MAIL_<ID>_{IMAP_HOST,IMAP_PORT,IMAP_TLS,SMTP_HOST,SMTP_PORT,SMTP_STARTTLS,
-# EMAIL,DISPLAY_NAME} from the same .env.
-ACCOUNTS: list[AccountDef] = [
-    AccountDef(
-        id="poly",
-        label="Polytechnique (X)",
-        imap=ImapEndpoint(host="webmail.polytechnique.fr", port=993, tls=True),
-        smtp=SmtpEndpoint(host="webmail.polytechnique.fr", port=587, starttls=True),
-        email="ivann.kamdem-pouokam@polytechnique.edu",
-        display_name="Ivann KAMDEM POUOKAM",
-        default=True,
-        signature=SignatureDef(
-            before_logo="Ivann KAMDEM\nEIX X2024",
-            logo_path="assets/signature_logo.png",
-            after_logo=(
-                "ÉCOLE POLYTECHNIQUE\n91128 PALAISEAU CEDEX\nT. +33(0)605957785\n"
-                "ivann.kamdem-pouokam@polytechnique.edu"
+# ── Endpoint resolution helpers ───────────────────────────────────────────────
+
+
+def _detect_endpoints(email: str) -> tuple[ImapEndpoint, SmtpEndpoint] | None:
+    """Auto-detect IMAP/SMTP endpoints from the email domain.
+
+    Args:
+        email (str): Full e-mail address, e.g. `user@gmail.com`.
+
+    Returns:
+        tuple[ImapEndpoint, SmtpEndpoint] | None: Resolved endpoints, or None
+        if the domain is unknown.
+
+    Examples:
+        >>> _detect_endpoints("user@gmail.com")[0].host
+        'imap.gmail.com'
+        >>> _detect_endpoints("user@polytechnique.edu")[1].port
+        587
+        >>> _detect_endpoints("user@unknown-domain.xyz") is None
+        True
+    """
+    domain = email.split("@")[-1].lower() if "@" in email else ""
+    defaults = EMAIL_PROVIDER_DEFAULTS.get(domain)
+    if defaults is None:
+        return None
+    ih, ip, it, sh, sp, st = defaults
+    return ImapEndpoint(host=ih, port=ip, tls=it), SmtpEndpoint(
+        host=sh, port=sp, starttls=st
+    )
+
+
+def _resolve_endpoints(account_data: dict) -> tuple[ImapEndpoint, SmtpEndpoint]:
+    """Resolve IMAP/SMTP endpoints: explicit overrides → provider type → email domain.
+
+    Resolution order:
+      1. Explicit ``imap_host`` + ``smtp_host`` in the account data (custom server)
+      2. ``provider_type`` from the HITL form (e.g. ``"gmail"`` → ``imap.gmail.com``)
+         — handles custom domains like ``user@company.com`` on Gmail/Outlook servers
+      3. Email domain lookup in ``EMAIL_PROVIDER_DEFAULTS`` (``user@gmail.com``)
+      4. Error if nothing matches
+
+    Args:
+        account_data (dict): Raw JSON account dict, optionally containing
+            ``email``, ``imap_host``, ``smtp_host``, ``provider_type``.
+
+    Returns:
+        tuple[ImapEndpoint, SmtpEndpoint]: Resolved endpoints.
+
+    Raises:
+        MailProxyError: When hosts cannot be determined.
+
+    Examples:
+        >>> d = {"email": "u@gmail.com"}
+        >>> _resolve_endpoints(d)[0].host
+        'imap.gmail.com'
+        >>> d2 = {"email": "u@x.com", "imap_host": "custom.imap.com", "smtp_host": "custom.smtp.com"}
+        >>> _resolve_endpoints(d2)[0].host
+        'custom.imap.com'
+        >>> d3 = {"email": "u@company.com", "provider_type": "gmail"}
+        >>> _resolve_endpoints(d3)[0].host
+        'imap.gmail.com'
+    """
+    email = account_data.get("email", "")
+    imap_host = account_data.get("imap_host")
+    smtp_host = account_data.get("smtp_host")
+    provider_type = account_data.get("provider_type", "")
+
+    # 1. Explicit overrides
+    if imap_host and smtp_host:
+        return (
+            ImapEndpoint(
+                host=imap_host,
+                port=account_data.get("imap_port", DEFAULT_IMAP_PORT),
+                tls=account_data.get("imap_tls", True),
             ),
+            SmtpEndpoint(
+                host=smtp_host,
+                port=account_data.get("smtp_port", DEFAULT_SMTP_PORT),
+                starttls=account_data.get("smtp_starttls", True),
+            ),
+        )
+
+    # 2. Provider type from HITL form (handles custom domains)
+    if provider_type:
+        type_defaults = PROVIDER_TYPE_DEFAULTS.get(provider_type)
+        if type_defaults:
+            ih, ip, it, sh, sp, st = type_defaults
+            return (
+                ImapEndpoint(
+                    host=imap_host or ih,
+                    port=account_data.get("imap_port", ip),
+                    tls=account_data.get("imap_tls", it),
+                ),
+                SmtpEndpoint(
+                    host=smtp_host or sh,
+                    port=account_data.get("smtp_port", sp),
+                    starttls=account_data.get("smtp_starttls", st),
+                ),
+            )
+
+    # 3. Email domain detection
+    detected = _detect_endpoints(email)
+
+    if detected is None:
+        raise MailProxyError(
+            f"Cannot determine IMAP/SMTP endpoints for {email!r}: "
+            f"unknown domain and no imap_host/smtp_host/provider_type provided. "
+            f"Known domains: {', '.join(sorted(EMAIL_PROVIDER_DEFAULTS))}."
+        )
+
+    imap_default, smtp_default = detected
+    return (
+        ImapEndpoint(
+            host=imap_host or imap_default.host,
+            port=account_data.get("imap_port", imap_default.port),
+            tls=account_data.get("imap_tls", imap_default.tls),
         ),
-    ),
-]
+        SmtpEndpoint(
+            host=smtp_host or smtp_default.host,
+            port=account_data.get("smtp_port", smtp_default.port),
+            starttls=account_data.get("smtp_starttls", smtp_default.starttls),
+        ),
+    )
+
+
+# ── JSON accounts loader ──────────────────────────────────────────────────────
+
+_accounts_cache: list[AccountDef] = []
+
+
+def load_accounts(force: bool = False) -> list[AccountDef]:
+    """Load and resolve all accounts from ~/.config/mail-proxy/accounts.json.
+
+    Each account's IMAP/SMTP endpoints are resolved: explicit JSON fields
+    override the auto-detected defaults from the email domain.
+
+    Args:
+        force (bool): True = reload from disk even if already cached.
+
+    Returns:
+        list[AccountDef]: All resolved account definitions (empty when missing).
+
+    Raises:
+        MailProxyError: When the JSON file exists but is malformed.
+
+    Examples:
+        >>> load_accounts(force=True)[0].id
+        'poly'
+        >>> len(load_accounts()) >= 1
+        True
+    """
+    global _accounts_cache
+    if _accounts_cache and not force:
+        return _accounts_cache
+
+    if not ACCOUNTS_JSON_PATH.exists():
+        _accounts_cache = []
+        return []
+
+    try:
+        raw_list = json.loads(ACCOUNTS_JSON_PATH.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise MailProxyError(f"Cannot parse {ACCOUNTS_JSON_PATH}: {exc}") from exc
+
+    if not isinstance(raw_list, list):
+        raise MailProxyError(f"{ACCOUNTS_JSON_PATH} must contain a JSON array.")
+
+    accounts: list[AccountDef] = []
+    for i, entry in enumerate(raw_list):
+        if not isinstance(entry, dict) or "id" not in entry or "email" not in entry:
+            logger.warning(
+                "Skipping account #%d in %s: missing 'id' or 'email'.",
+                i,
+                ACCOUNTS_JSON_PATH,
+            )
+            continue
+        try:
+            imap, smtp = _resolve_endpoints(entry)
+        except MailProxyError as exc:
+            logger.warning(
+                "Skipping account %r in %s: %s",
+                entry.get("id"),
+                ACCOUNTS_JSON_PATH,
+                exc,
+            )
+            continue
+        account = AccountDef(
+            id=entry["id"],
+            email=entry["email"],
+            display_name=entry.get("display_name", ""),
+            aliases=tuple(entry.get("aliases", [])),
+            login=entry.get("login", ""),
+            provider_type=entry.get("provider_type", ""),
+            auth_method=entry.get("auth_method", "password"),
+            oauth2_provider=entry.get("oauth2_provider", ""),
+            imap=imap,
+            smtp=smtp,
+            signature=SignatureDef(**entry.get("signature", {})),
+            default=entry.get("default", False),
+        )
+        accounts.append(account)
+
+    _accounts_cache = accounts
+    return accounts
+
+
+def write_accounts_json(accounts: list[AccountDef]) -> None:
+    """Write the full accounts list to ~/.config/mail-proxy/accounts.json (chmod 600).
+
+    Serializes every AccountDef (minus runtime-resolved fields) as a clean JSON
+    array. This is the ONLY writer — prevents partial writes and desync.
+
+    Args:
+        accounts (list[AccountDef]): All account definitions to persist.
+
+    Returns:
+        None: Writes the file atomically and clears the cache.
+
+    Examples:
+        >>> write_accounts_json([AccountDef(id="x", email="a@b.com", imap=ImapEndpoint(host="i"), smtp=SmtpEndpoint(host="s"))])
+        >>> ACCOUNTS_JSON_PATH.exists()
+        True
+    """
+    global _accounts_cache
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    CONFIG_DIR.chmod(DIR_PERMISSIONS)
+
+    data = []
+    for a in accounts:
+        entry: dict[str, Any] = {
+            "id": a.id,
+            "email": a.email,
+        }
+        if a.display_name:
+            entry["display_name"] = a.display_name
+        if a.aliases:
+            entry["aliases"] = list(a.aliases)
+        if a.login:
+            entry["login"] = a.login
+        if a.provider_type:
+            entry["provider_type"] = a.provider_type
+        if a.auth_method != "password":
+            entry["auth_method"] = a.auth_method
+        if a.oauth2_provider:
+            entry["oauth2_provider"] = a.oauth2_provider
+        if a.default:
+            entry["default"] = True
+        if a.imap_host:
+            entry["imap_host"] = a.imap_host
+        if a.smtp_host:
+            entry["smtp_host"] = a.smtp_host
+        if a.signature and (
+            a.signature.before_logo or a.signature.after_logo or a.signature.logo_path
+        ):
+            entry["signature"] = {}
+            if a.signature.before_logo:
+                entry["signature"]["before_logo"] = a.signature.before_logo
+            if a.signature.logo_path:
+                entry["signature"]["logo_path"] = a.signature.logo_path
+            if a.signature.after_logo:
+                entry["signature"]["after_logo"] = a.signature.after_logo
+        data.append(entry)
+
+    ACCOUNTS_JSON_PATH.write_text(
+        json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    ACCOUNTS_JSON_PATH.chmod(FILE_PERMISSIONS)
+    _accounts_cache = []
+
+
+# ── Account resolution ────────────────────────────────────────────────────────
 
 
 def account_env_prefix(account_id: str) -> str:
@@ -209,10 +587,10 @@ def load_env() -> dict[str, str]:
         file does not exist).
 
     Examples:
-        >>> load_env()
-        {'MAIL_POLY_LOGIN': 'ivann.kamdem-pouokam', 'MAIL_POLY_PASS': '…'}
         >>> load_env()          # when ~/.config/mail-proxy/.env is absent
         {}
+        >>> load_env()          # when .env has MAIL_POLY_PASS=secret
+        {'MAIL_POLY_PASS': 'secret'}
     """
     if not ENV_PATH.exists():
         return {}
@@ -238,14 +616,14 @@ def write_env(values: dict[str, str]) -> None:
 
     Args:
         values (dict[str, str]): Full desired content, e.g.
-            ``{"MAIL_POLY_LOGIN": "ivann.kamdem-pouokam", "MAIL_POLY_PASS": "…"}``.
+            ``{"MAIL_POLY_PASS": "secret", "MAIL_WORK_PASS": "app-password"}``.
 
     Returns:
         None: Writes the file and sets 0600 permissions.
 
     Examples:
-        >>> write_env({"MAIL_POLY_LOGIN": "ivann.kamdem-pouokam"})  # 1 key written
-        >>> write_env({})                                            # file now empty
+        >>> write_env({"MAIL_POLY_PASS": "s3cret"})  # 1 key written
+        >>> write_env({})                              # file now empty
     """
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     lines = [
@@ -292,10 +670,10 @@ def _get_int(name: str, default: int) -> int:
         int: The parsed value.
 
     Examples:
-        >>> _get_int("MAIL_POLY_IMAP_PORT", 993)
-        993
         >>> _get_int("MAIL_TIMEOUT", 15)
         15
+        >>> _get_int("MAIL_NOPE_PORT", 993)
+        993
     """
     raw = os.environ.get(name)
     try:
@@ -305,49 +683,48 @@ def _get_int(name: str, default: int) -> int:
 
 
 def resolve_account(account: AccountDef) -> AccountDef:
-    """Apply .env overrides (secrets + endpoints) to an account definition.
+    """Apply .env secret (password) to an account definition.
 
-    Reads MAIL_<ID>_LOGIN / MAIL_<ID>_PASS plus the optional EMAIL,
-    DISPLAY_NAME and IMAP/SMTP endpoint overrides from the environment.
+    The login is the email from the JSON — only the password comes from .env.
+    For OAuth2 accounts, the password field is left empty (the caller uses
+    XOAUTH2 via the oauth2 module instead).
 
     Args:
         account (AccountDef): The definition to resolve.
 
     Returns:
-        AccountDef: A copy with username/password and any override applied.
+        AccountDef: A copy with username/password populated.
 
     Examples:
-        >>> resolve_account(ACCOUNTS[0]).username
-        'ivann.kamdem-pouokam'
-        >>> resolve_account(ACCOUNTS[0]).password == ""
+        >>> a = AccountDef(id="poly", email="a@b.com", imap=ImapEndpoint(host="x"), smtp=SmtpEndpoint(host="y"))
+        >>> resolve_account(a).username
+        'a@b.com'
+        >>> resolve_account(a).password == ""
         True
     """
     prefix = account_env_prefix(account.id)
     resolved = account.model_copy()
-    resolved.username = os.environ.get(f"{prefix}LOGIN", "")
-    resolved.password = os.environ.get(f"{prefix}PASS", "")
-    resolved.email = os.environ.get(f"{prefix}EMAIL", account.email)
-    resolved.display_name = os.environ.get(
-        f"{prefix}DISPLAY_NAME", account.display_name
-    )
-    resolved.imap = ImapEndpoint(
-        host=os.environ.get(f"{prefix}IMAP_HOST", account.imap.host),
-        port=_get_int(f"{prefix}IMAP_PORT", account.imap.port),
-        tls=_get_bool(f"{prefix}IMAP_TLS", account.imap.tls),
-    )
-    resolved.smtp = SmtpEndpoint(
-        host=os.environ.get(f"{prefix}SMTP_HOST", account.smtp.host),
-        port=_get_int(f"{prefix}SMTP_PORT", account.smtp.port),
-        starttls=_get_bool(f"{prefix}SMTP_STARTTLS", account.smtp.starttls),
-    )
+    resolved.username = account.login or account.email
+    if account.auth_method == "oauth2":
+        resolved.password = ""
+    elif account.provider_type == "custom":
+        from .secrets import get_cached_password
+
+        resolved.password = get_cached_password(account.id) or ""
+    else:
+        resolved.password = os.environ.get(f"{prefix}PASS", "")
     return resolved
 
 
 def get_account(account_id: str | None = None) -> AccountDef:
-    """Return the resolved account for an id (or the default account).
+    """Return the resolved account for an id, alias, or email prefix.
+
+    Resolution order: exact id match → alias match → email prefix match → error.
+    This lets users pass `-a poly`, `-a x`, or `-a user.name` and all resolve
+    to the same account.
 
     Args:
-        account_id (str | None): Account id; None → the default account.
+        account_id (str | None): Account id, alias, or email prefix; None → default.
 
     Returns:
         AccountDef: The resolved account (credentials + endpoint overrides).
@@ -358,21 +735,39 @@ def get_account(account_id: str | None = None) -> AccountDef:
     Examples:
         >>> get_account("poly").id
         'poly'
-        >>> get_account().id      # default account
+        >>> get_account("x").id       # alias resolution
+        'poly'
+        >>> get_account().id          # default account
         'poly'
     """
+    accounts = load_accounts()
+    if not accounts:
+        raise MailProxyError(
+            f"No accounts found. Create {ACCOUNTS_JSON_PATH} (see accounts.json.example) "
+            "or run 'mail-proxy admin setup'."
+        )
     if account_id:
-        for account in ACCOUNTS:
+        # 1. Exact id match
+        for account in accounts:
             if account.id == account_id:
+                return resolve_account(account)
+        # 2. Alias match
+        for account in accounts:
+            if account_id in account.aliases:
+                return resolve_account(account)
+        # 3. Email prefix match (e.g. "user.name" matches "user.name@example.com")
+        lower_id = account_id.lower()
+        for account in accounts:
+            if account.email and account.email.lower().startswith(lower_id):
                 return resolve_account(account)
         raise MailProxyError(
             f"Unknown account {account_id!r}. Known accounts: "
-            f"{', '.join(a.id for a in ACCOUNTS)}."
+            f"{', '.join(a.id + (' (' + '|'.join(a.aliases) + ')' if a.aliases else '') for a in accounts)}."
         )
-    for account in ACCOUNTS:
+    for account in accounts:
         if account.default:
             return resolve_account(account)
-    raise MailProxyError("No default account declared in config.py.")
+    raise MailProxyError('No default account ("default": true) in accounts.json.')
 
 
 def api_timeout() -> float:
@@ -397,6 +792,9 @@ def api_timeout() -> float:
 def ensure_env(account_id: str | None = None) -> None:
     """Check that the config exists and exposes usable account credentials.
 
+    Verifies: accounts.json exists, .env exists, and the target account has
+    MAIL_<ID>_PASS (for password auth) or a valid OAuth2 token (for oauth2 auth).
+
     Args:
         account_id (str | None): Account to validate; None → default account.
 
@@ -409,17 +807,66 @@ def ensure_env(account_id: str | None = None) -> None:
     Examples:
         >>> ensure_env()                  # default account credentials present
         >>> ensure_env("poly")
-        MailProxyError: Config file not found at …/.env. Run 'mail-proxy admin setup'.
+        MailProxyError: Accounts file not found at …/accounts.json.
     """
+    if not ACCOUNTS_JSON_PATH.exists():
+        raise MailProxyError(
+            f"Accounts file not found at {ACCOUNTS_JSON_PATH}. "
+            "Copy accounts.json.example to that path and edit it."
+        )
     if not ENV_PATH.exists():
         raise MailProxyError(
             f"Config file not found at {ENV_PATH}. Run 'mail-proxy admin setup' first."
         )
     load_env()
     account = get_account(account_id)
+    # Custom accounts: password lives in system keyring (not .env), prompted on first do
+    if account.provider_type == "custom":
+        return
     prefix = account_env_prefix(account.id)
-    if not account.username or not account.password:
+    if account.auth_method == "oauth2":
+        from .oauth2 import load_token
+
+        token = load_token(account.id)
+        if token is None:
+            raise MailProxyError(
+                f"Account {account.id!r} uses OAuth2 but has no stored token. "
+                "Run 'mail-proxy admin auth login' to authorize."
+            )
+    elif not account.password:
         raise MailProxyError(
-            f"Account {account.id!r} is missing {prefix}LOGIN or {prefix}PASS. "
-            "Run 'mail-proxy admin setup' to configure."
+            f"Account {account.id!r} is missing {prefix}PASS. "
+            "Run 'mail-proxy admin auth login' to configure."
         )
+
+
+def list_accounts() -> list[dict[str, str | bool | list[str]]]:
+    """Return all declared accounts with their env prefix and labels.
+
+    Used by `admin setup` and `admin status` to iterate every account.
+
+    Returns:
+        list[dict[str, str | bool | list[str]]]: One dict per account with
+        keys: id, label, prefix, email, aliases, default.
+
+    Examples:
+        >>> accounts = list_accounts()
+        >>> accounts[0]["id"]
+        'poly'
+        >>> accounts[0]["prefix"]
+        'MAIL_POLY_'
+        >>> len(accounts) >= 1
+        True
+    """
+    accounts = load_accounts()
+    return [
+        {
+            "id": a.id,
+            "label": a.display_name or a.id,
+            "prefix": account_env_prefix(a.id),
+            "email": a.email,
+            "aliases": list(a.aliases),
+            "default": a.default,
+        }
+        for a in accounts
+    ]

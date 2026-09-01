@@ -9,6 +9,7 @@ dependencies = [
     "rich>=13.9.4",
     "imapclient>=3.0.1",
     "html2text>=2024.2.26",
+    "keyring>=25.0.0",
 ]
 
 [project.scripts]

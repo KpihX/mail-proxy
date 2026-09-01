@@ -38,12 +38,16 @@ app = typer.Typer(
     help="Mail administrative proxy — RPC CLI for IMAP/SMTP accounts, messages, folders and labels.",
     add_completion=False,
 )
-app_admin = typer.Typer(help="Admin commands: setup, status, reset, purge.")
+app_admin = typer.Typer(
+    help="Admin commands: doctor, status, auth login|status|logout, reset, purge."
+)
+app_admin_auth = typer.Typer(help="Authentication commands: login, status, logout.")
 app_do = typer.Typer(
     help="RPC actions: inbox-check, message-list, message-send, folder-list, …",
     add_completion=False,
     add_help_option=False,
 )
+app_admin.add_typer(app_admin_auth, name="auth")
 app.add_typer(app_admin, name="admin")
 app.add_typer(app_do, name="do")
 
@@ -168,12 +172,12 @@ def _execute(
         >>> _execute(REGISTRY["message-delete"], '{"uids":[42]}', None, "json")
         (opens the HITL form, then prints the envelope)
     """
+    params = parse_payload(payload_raw)
     try:
-        ensure_env()
+        ensure_env(params.get("account_id"))
     except MailProxyError as exc:
         print_error(str(exc))
         sys.exit(1)
-    params = parse_payload(payload_raw)
 
     meta_status, comment, edited = "ok", "", False
     required_checks = tuple(getattr(action.handler, "__verification_checks__", ()))
@@ -189,7 +193,7 @@ def _execute(
         except ValidationError as exc:
             print_error(f"Validation error: {exc}")
             sys.exit(1)
-        client = MailClient()
+        client = MailClient(params.get("account_id"))
         try:
             preflight(client, preflight_payload)
         except MailProxyError as exc:
@@ -226,7 +230,7 @@ def _execute(
         sys.exit(1)
 
     if client is None:
-        client = MailClient()
+        client = MailClient(params.get("account_id"))
     try:
         outcome = action.handler(client, validated)
         verification: Verification | None = None
@@ -370,27 +374,45 @@ def _run_admin(command: Callable[[], tuple[dict | None, Status, bool, str]]) -> 
     print_json(data=ok(data, status=status, edited=edited, comment=comment))
 
 
-@app_admin.command("setup")
-def admin_setup() -> None:
-    """Configure per-account credentials via the HITL web form (ALWAYS JSON)."""
-    _run_admin(admin.setup)
+@app_admin.command("doctor")
+def admin_doctor() -> None:
+    """Scan config and auto-fix permission / structural problems (ALWAYS JSON)."""
+    print_json(data=ok(admin.doctor()))
 
 
 @app_admin.command("status")
 def admin_status() -> None:
-    """Auth state: masked credentials, live IMAP/SMTP probes (ALWAYS JSON)."""
+    """Complete status: accounts, auth, permissions, probes, issues (ALWAYS JSON)."""
     print_json(data=ok(admin.status()))
+
+
+@app_admin_auth.command("login")
+def admin_auth_login() -> None:
+    """Collect one full account (config + password) via HITL, write JSON + .env atomically."""
+    _run_admin(admin.auth_login)
+
+
+@app_admin_auth.command("status")
+def admin_auth_status() -> None:
+    """Show auth state of ALL accounts: JSON config + .env secret + IMAP/SMTP probes."""
+    print_json(data=ok(admin.auth_status()))
+
+
+@app_admin_auth.command("logout")
+def admin_auth_logout() -> None:
+    """Remove the password for ONE account (HITL-confirmed). Account stays in JSON."""
+    _run_admin(admin.auth_logout)
 
 
 @app_admin.command("reset")
 def admin_reset() -> None:
-    """Empty the configuration file (ALWAYS JSON)."""
+    """Empty ALL passwords from .env (HITL-confirmed). Accounts in JSON untouched."""
     _run_admin(admin.reset)
 
 
 @app_admin.command("purge")
 def admin_purge() -> None:
-    """Delete the configuration directory (ALWAYS JSON)."""
+    """Delete the entire config directory (HITL-confirmed). Both JSON and .env."""
     _run_admin(admin.purge)
 
 

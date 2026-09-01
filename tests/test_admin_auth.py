@@ -1,4 +1,4 @@
-"""Admin — setup/status/reset/purge with a faked HITL and probes."""
+"""Admin — auth login/status/logout + reset/purge with faked HITL and probes."""
 
 import os
 
@@ -7,15 +7,7 @@ import pytest
 from mail_proxy import admin, config
 
 
-@pytest.fixture(autouse=True)
-def isolated_env(tmp_path, monkeypatch):
-    """Point the config at a temporary directory and clear MAIL_* env vars."""
-    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
-    monkeypatch.setattr(config, "ENV_PATH", tmp_path / ".env")
-    for key in list(os.environ):
-        if key.startswith("MAIL_"):
-            monkeypatch.delenv(key, raising=False)
-    yield
+# No local isolated_env fixture — conftest.py provides it for all tests.
 
 
 def _approve(payload, comment="", edited=False):
@@ -33,50 +25,72 @@ def _reject(comment="no"):
 
 
 def test_mask():
-    assert admin._mask("ivann.kamdem-pouokam") == "ivan…uokam"
+    assert admin._mask("user.name@mail.com") == "user…l.com"
     assert admin._mask("") == ""
     assert admin._mask("short") == "…"
 
 
-def test_setup_writes_fields(monkeypatch):
+# ── auth login ────────────────────────────────────────────────────────────────
+
+
+def test_auth_login_writes_json_and_env(monkeypatch):
     monkeypatch.setattr(
         admin, "request_approval",
-        lambda action, payload: _approve({"MAIL_POLY_LOGIN": "ivann", "MAIL_POLY_PASS": "pw"}),
+        lambda action, payload: _approve({
+            "id": "testaccount",
+            "email": "test@gmail.com",
+            "aliases": ["test"],
+            "display_name": "Test User",
+            "password": "secret123",
+        }),
     )
-    data, status, *_ = admin.setup()
+    monkeypatch.setattr(
+        admin, "_probe_account_imap",
+        lambda account: {"reachable": True, "auth_ok": True, "error": ""},
+    )
+    monkeypatch.setattr(
+        admin, "_probe_account_smtp",
+        lambda account: {"reachable": True, "error": ""},
+    )
+    data, status, *_ = admin.auth_login()
     assert status == "approved"
-    assert data["config"] == str(config.ENV_PATH)
-    assert "MAIL_POLY_LOGIN" in data["fields"]
+    assert data["account"] == "testaccount"
+    assert data["configured"] is True
+    assert data["imap"]["auth_ok"] is True
+    # Both JSON and .env should be written
+    assert config.ACCOUNTS_JSON_PATH.exists()
     assert config.ENV_PATH.exists()
-    assert config.ENV_PATH.stat().st_mode & 0o777 == 0o600
-    assert config.load_env()["MAIL_POLY_LOGIN"] == "ivann"
+    loaded_env = config.load_env()
+    assert loaded_env.get("MAIL_TESTACCOUNT_PASS") == "secret123"
+    # Verify JSON was updated
+    config._accounts_cache = []
+    accounts = config.load_accounts(force=True)
+    assert any(a.id == "testaccount" for a in accounts)
 
 
-def test_setup_keeps_untouched_and_clears(monkeypatch):
-    config.write_env({"MAIL_POLY_LOGIN": "old", "MAIL_POLY_PASS": "oldpw"})
-    # Reviewer changes the login, clears the pass (empty string), keeps nothing else.
-    monkeypatch.setattr(
-        admin, "request_approval",
-        lambda action, payload: _approve({"MAIL_POLY_LOGIN": "new", "MAIL_POLY_PASS": ""}),
-    )
-    admin.setup()
-    # The FILE is the source of truth — the in-process env may keep stale values
-    # (shell env intentionally wins over the file, see config.load_env).
-    content = config.ENV_PATH.read_text()
-    assert "MAIL_POLY_LOGIN=new" in content
-    assert "MAIL_POLY_PASS" not in content
-
-
-def test_setup_rejected(monkeypatch):
+def test_auth_login_rejected(monkeypatch):
     monkeypatch.setattr(admin, "request_approval", lambda action, payload: _reject("nope"))
-    data, status, _, comment = admin.setup()
+    data, status, _, comment = admin.auth_login()
     assert data is None
     assert status == "rejected"
     assert comment == "nope"
+    assert not config.ENV_PATH.exists()
 
 
-def test_status_shape(monkeypatch):
-    config.write_env({"MAIL_POLY_LOGIN": "ivann.kamdem-pouokam", "MAIL_POLY_PASS": "pw"})
+def test_auth_login_missing_fields(monkeypatch):
+    monkeypatch.setattr(
+        admin, "request_approval",
+        lambda action, payload: _approve({"id": "", "email": "", "password": ""}),
+    )
+    with pytest.raises(Exception):
+        admin.auth_login()
+
+
+# ── auth status ───────────────────────────────────────────────────────────────
+
+
+def test_auth_status_shape(monkeypatch):
+    config.write_env({"MAIL_POLY_PASS": "pw"})
     monkeypatch.setattr(
         admin, "_probe_imap",
         lambda account_id: {"reachable": True, "auth_ok": True, "error": ""},
@@ -86,17 +100,15 @@ def test_status_shape(monkeypatch):
         lambda account_id: {"reachable": True, "error": ""},
     )
     state = admin.status()
-    assert state["config_exists"] is True
+    assert "accounts_json" in state
     assert state["default_account"] == "poly"
-    assert state["accounts"][0]["id"] == "poly"
-    assert state["accounts"][0]["configured"] is True
-    assert state["accounts"][0]["login"] == "ivan…uokam"  # masked
-    assert state["imap"]["auth_ok"] is True
-    assert state["smtp"]["reachable"] is True
-    assert state["permissions"]["config_file"]["status"] == "ok"
+    poly = next(a for a in state["accounts"] if a["id"] == "poly")
+    assert poly["configured"] is True
+    assert poly["imap"]["auth_ok"] is True
+    assert poly["smtp"]["reachable"] is True
 
 
-def test_status_unconfigured(monkeypatch):
+def test_auth_status_unconfigured(monkeypatch):
     monkeypatch.setattr(
         admin, "_probe_imap",
         lambda account_id: {"reachable": False, "auth_ok": False, "error": "missing"},
@@ -106,13 +118,44 @@ def test_status_unconfigured(monkeypatch):
         lambda account_id: {"reachable": False, "error": "missing"},
     )
     state = admin.status()
-    assert state["config_exists"] is False
-    assert state["accounts"][0]["configured"] is False
-    assert state["accounts"][0]["login"] == ""
+    assert "accounts_json" in state
+    poly = next(a for a in state["accounts"] if a["id"] == "poly")
+    assert poly["configured"] is False
+
+
+# ── auth logout ───────────────────────────────────────────────────────────────
+
+
+def test_auth_logout_removes_password(monkeypatch):
+    config.write_env({"MAIL_POLY_PASS": "pw"})
+    monkeypatch.setattr(
+        admin, "request_approval",
+        lambda action, payload: _approve({"account_id": "poly"}),
+    )
+    data, status, _, _ = admin.auth_logout()
+    assert status == "approved"
+    assert data["account"] == "poly"
+    assert data["configured"] is False
+    loaded_env = config.load_env()
+    assert "MAIL_POLY_PASS" not in loaded_env
+
+
+def test_auth_logout_rejected(monkeypatch):
+    config.write_env({"MAIL_POLY_PASS": "pw"})
+    monkeypatch.setattr(admin, "request_approval", lambda action, payload: _reject())
+    data, status, *_ = admin.auth_logout()
+    assert data is None
+    assert status == "rejected"
+    # Password should still be there
+    loaded_env = config.load_env()
+    assert "MAIL_POLY_PASS" in loaded_env
+
+
+# ── reset / purge ─────────────────────────────────────────────────────────────
 
 
 def test_reset_clears(monkeypatch):
-    config.write_env({"MAIL_POLY_LOGIN": "u", "MAIL_POLY_PASS": "p"})
+    config.write_env({"MAIL_POLY_PASS": "p"})
     monkeypatch.setattr(admin, "request_approval", lambda action, payload: _approve(payload))
     data, status, _, _ = admin.reset()
     assert status == "approved"
@@ -128,7 +171,7 @@ def test_reset_rejected(monkeypatch):
 
 
 def test_purge_deletes_config_dir(monkeypatch):
-    config.write_env({"MAIL_POLY_LOGIN": "u"})
+    config.write_env({"MAIL_POLY_PASS": "u"})
     assert config.CONFIG_DIR.exists()
     monkeypatch.setattr(admin, "request_approval", lambda action, payload: _approve(payload))
     data, status, _, _ = admin.purge()
@@ -139,9 +182,9 @@ def test_purge_deletes_config_dir(monkeypatch):
 
 
 def test_purge_rejected(monkeypatch):
-    config.write_env({"MAIL_POLY_LOGIN": "u"})
+    config.write_env({"MAIL_POLY_PASS": "u"})
     monkeypatch.setattr(admin, "request_approval", lambda action, payload: _reject())
     data, status, _, _ = admin.purge()
     assert data is None
     assert status == "rejected"
-    assert config.CONFIG_DIR.exists()  # untouched
+    assert config.CONFIG_DIR.exists()

@@ -60,8 +60,8 @@ mail-proxy
 
 | Command | Role | Output | HITL | Backend |
 |---------|------|--------|:----:|---------|
-| `mail-proxy admin setup` | Credential setup via HITL web form — login + password for **every declared account** | JSON (final) | ✅ | local file write |
-| `mail-proxy admin status` | Auth state: per-account masked credentials, live IMAP probe (connect+login) and SMTP probe (connect+ehlo), config path, permissions | JSON | ❌ | IMAP + SMTP probe |
+| `mail-proxy admin setup` | Credential setup via HITL web form — login + password for **ALL declared accounts** (poly, outlook, gmail, …) | JSON (final) | ✅ | local file write |
+| `mail-proxy admin status` | Auth state: per-account masked credentials, live IMAP/SMTP probes for **EVERY account**, config path, permissions | JSON | ❌ | IMAP + SMTP probe |
 | `mail-proxy admin reset` | Clear all credentials from the config file | JSON | ✅ | local file write |
 | `mail-proxy admin purge` | Delete the config directory (uninstall hint printed) | JSON | ✅ | local deletion |
 
@@ -329,44 +329,41 @@ suite asserts the exact `REQUIRE_VERIFICATION` set. A missing decorator is a **h
 dropped. Account definitions (hosts, ports, e-mail, display name, signature) live as documented
 constants in `config.py`; **every one of their fields is overridable** from this single file.
 
+### Multi-account support
+
+Three accounts are declared by default: `poly` (Zimbra), `outlook` (Microsoft 365), `gmail`
+(Google Workspace). Each account has:
+
+- A unique **id** (used as env prefix: `MAIL_<ID_UPPER>_`)
+- Optional **aliases** for `-a` flag resolution (e.g. `poly` has aliases `x`, `polytechnique`)
+- Default IMAP/SMTP endpoints (overridable via `.env`)
+- The same env-prefix pattern: `MAIL_<ID>_LOGIN`, `MAIL_<ID>_PASS`
+
+**Resolution by `-a` flag** — the user can pass any of:
+- `-a poly` → exact id match
+- `-a x` → alias match (resolves to `poly`)
+- `-a user.name` → email prefix match (resolves to `poly` if email starts with it)
+
+### Adding a new account
+
+1. Add one `AccountDef` to the `ACCOUNTS` list in `config.py` (hosts, ports, label, aliases).
+2. Add the matching `MAIL_<ID>_LOGIN` / `MAIL_<ID>_PASS` to `.env.example`.
+3. Configure via `mail-proxy admin setup` — the HITL form shows ALL accounts.
+4. Every action payload accepts `"account_id"` — omit it to use the default account.
+
 ```env
 # ── mail-proxy configuration ──────────────────────────────────────────────────
 # Location : ~/.config/mail-proxy/.env      (chmod 600 — contains secrets)
-# Created  : mail-proxy admin setup
-# Every line below is documented with a real, valid example value.
-# Account env prefix: MAIL_<ACCOUNT_ID_UPPER>_   (default account: poly)
+# Created  : mail-proxy admin auth login
+# Resolution: -a <id|alias|email_prefix> → account
 
-# [REQUIRED] IMAP/SMTP login of the `poly` account.
-# Example: MAIL_POLY_LOGIN=ivann.kamdem-pouokam
-MAIL_POLY_LOGIN=
-# [REQUIRED] IMAP/SMTP password of the `poly` account. Never committed.
-# Example: MAIL_POLY_PASS=correct-horse-battery-staple
-MAIL_POLY_PASS=
-# [OPTIONAL] Overrides the From-header address (defaults to config.py).
-# Example: MAIL_POLY_EMAIL=ivann.kamdem-pouokam@polytechnique.edu
-MAIL_POLY_EMAIL=
-# [OPTIONAL] Overrides the From-header display name (defaults to config.py).
-# Example: MAIL_POLY_DISPLAY_NAME=Ivann KAMDEM POUOKAM
-MAIL_POLY_DISPLAY_NAME=
-# [OPTIONAL] IMAP endpoint overrides.
-# Example: MAIL_POLY_IMAP_HOST=webmail.polytechnique.fr
-MAIL_POLY_IMAP_HOST=
-# Example: MAIL_POLY_IMAP_PORT=993
-MAIL_POLY_IMAP_PORT=
-# Example: MAIL_POLY_IMAP_TLS=true
-MAIL_POLY_IMAP_TLS=
-# [OPTIONAL] SMTP endpoint overrides.
-# Example: MAIL_POLY_SMTP_HOST=webmail.polytechnique.fr
-MAIL_POLY_SMTP_HOST=
-# Example: MAIL_POLY_SMTP_PORT=587
-MAIL_POLY_SMTP_PORT=
-# Example: MAIL_POLY_SMTP_STARTTLS=true
-MAIL_POLY_SMTP_STARTTLS=
-# [OPTIONAL] Connection timeout in seconds for every IMAP/SMTP call.
-# Example: MAIL_TIMEOUT=15
-MAIL_TIMEOUT=
-# Logging: NO file, NO level env var — exactly like `tg-proxy`/`tick-proxy`.
-# All logs go to stderr (systemd/journald captures them). Level fixed in code.
+# ── SECRETS ONLY ─────────────────────────────────────────────────────────────
+# The login IS the email address from accounts.json — only passwords go here.
+# Accounts are created via `mail-proxy admin auth login` which writes both
+# accounts.json AND .env atomically.
+
+MAIL_<ID>_PASS=correct-horse-battery-staple
+MAIL_TIMEOUT=15
 ```
 
 **Config directory layout:**

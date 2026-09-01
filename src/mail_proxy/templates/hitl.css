@@ -16,8 +16,9 @@ body { background: var(--background); color: var(--text); font: 14px/1.45 Inter,
 .hitl-subtitle, .hitl-status { color: var(--muted); font-size: 12px; margin: 3px 0 0; }
 .hitl-container { margin: 0 auto; max-width: 1500px; padding: 20px 24px; }
 .hitl-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin: 14px 0; overflow: hidden; }
-.hitl-card > h2 { background: var(--surface-raised); border-bottom: 1px solid var(--border); font-size: 13px; margin: 0; padding: 10px 14px; }
+.hitl-card > h2 { align-items: center; background: var(--surface-raised); border-bottom: 1px solid var(--border); display: flex; font-size: 13px; justify-content: space-between; margin: 0; padding: 10px 14px; }
 .hitl-card > .hitl-card-body { padding: 14px; }
+.field-label { color: var(--muted); font-weight: 400; }
 .hitl-json, .hitl-code { background: #080d18; border: 1px solid var(--border); border-radius: 7px; color: #dce7ff; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; overflow: auto; padding: 12px; white-space: pre-wrap; }
 .hitl-input { background: #080d18; border: 1px solid var(--border); border-radius: 7px; color: var(--text); font: inherit; min-height: 90px; padding: 10px; resize: vertical; width: 100%; }
 .hitl-input:focus { border-color: var(--accent); outline: none; }
@@ -29,10 +30,6 @@ body { background: var(--background); color: var(--text); font: 14px/1.45 Inter,
 .hitl-button:hover:not(:disabled) { filter: brightness(1.1); }
 .hitl-footer { background: var(--surface); border-top: 1px solid var(--border); bottom: 0; display: flex; gap: 12px; padding: 14px 24px; position: sticky; }
 .hitl-footer .hitl-input { min-height: 42px; resize: none; }
-.task-diffs { display: grid; gap: 14px; }
-.task-diff { display: flex; flex-direction: column; height: 280px; }
-.task-diff h2 { align-items: center; display: flex; justify-content: space-between; }
-.task-diff .editor { flex: 1; min-height: 0; }
-.task-diff .field-label { color: var(--muted); font-weight: 400; }
-#complete-overlay { align-items: center; background: var(--background); display: none; inset: 0; justify-content: center; position: fixed; text-align: center; z-index: 10; }
+.hitl-done { align-items: center; background: var(--background); display: flex; flex-direction: column; gap: 16px; height: 100vh; justify-content: center; text-align: center; }
+.hitl-done h2 { color: var(--success); font-size: 24px; }
 @media (max-width: 720px) { .hitl-header { align-items: flex-start; flex-direction: column; } .hitl-container, .hitl-footer { padding-left: 12px; padding-right: 12px; } .hitl-actions { width: 100%; } .hitl-button { flex: 1; } }
