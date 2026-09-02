@@ -23,6 +23,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, ClassVar
 
+from .exceptions import MailAPIError, MailProxyError
+
 logger = logging.getLogger(__name__)
 
 HITL_TIMEOUT: int | None = 600  # seconds (None = wait forever)
@@ -198,6 +200,7 @@ class HITLServer(BaseHTTPRequestHandler):
         html = html.replace("{{REQUEST_ID}}", req_id)
         account_id = ""
         account_email = ""
+        acct = None
         if isinstance(req.get("payload"), dict):
             account_id = req["payload"].get("account_id", "")
         if account_id:
@@ -210,6 +213,32 @@ class HITLServer(BaseHTTPRequestHandler):
                 pass
         html = html.replace("{{ACCOUNT_ID}}", account_id)
         html = html.replace("{{ACCOUNT_EMAIL}}", account_email)
+
+        # Resolve signature to rendered HTML so the HITL preview shows the
+        # actual signature (logo + text), never the raw keyword "default".
+        resolved_sig = ""
+        if isinstance(req.get("payload"), dict) and acct is not None:
+            sig_val = req["payload"].get("signature")
+            # Missing key → "default"; explicit "" → no signature
+            if sig_val is None:
+                sig_val = "default"
+            try:
+                from .api.smtp import SMTPClient
+
+                _, html_sig, logo = SMTPClient(acct)._resolve_signature(sig_val)
+                resolved_sig = html_sig
+                # Convert CID image reference to base64 data URI for display
+                if logo and 'src="cid:' in resolved_sig:
+                    import base64 as _b64
+
+                    b64 = _b64.b64encode(logo).decode()
+                    resolved_sig = resolved_sig.replace(
+                        'src="cid:sig_logo"',
+                        f'src="data:image/png;base64,{b64}"',
+                    )
+            except (MailProxyError, MailAPIError, FileNotFoundError, KeyError):
+                pass
+        html = html.replace("{{RESOLVED_SIG_HTML}}", resolved_sig)
         return html
 
 

@@ -34,6 +34,7 @@
 <body>
 <script type="application/json" id="payload-data">{{PAYLOAD_JSON}}</script>
 <script type="text/plain" id="hitl-account-email" style="display:none">{{ACCOUNT_EMAIL}}</script>
+<script type="text/plain" id="hitl-resolved-sig" style="display:none">{{RESOLVED_SIG_HTML}}</script>
 
 <header class="hitl-header">
   <div>
@@ -167,12 +168,11 @@ function strToList(s) {
 
 function renderSignature(sig) {
   var el = document.getElementById('sig-rendered');
-  if (!sig || sig === '') {
+  var resolved = document.getElementById('hitl-resolved-sig').textContent;
+  if (resolved && resolved.trim()) {
+    el.innerHTML = '<div style="border-top:1px solid #ccc;padding-top:8px;">' + resolved + '</div>';
+  } else if (!sig || sig === '') {
     el.innerHTML = '<span class="sig-empty">No signature</span>';
-  } else if (sig === 'default') {
-    el.innerHTML = '<span style="color:var(--accent)">Using default signature</span>';
-  } else if (sig.startsWith && sig.startsWith('sig-')) {
-    el.innerHTML = '<span style="color:var(--accent)">Using signature: ' + sig + '</span>';
   } else {
     el.innerHTML = '<div style="border-top:1px solid #ccc;padding-top:8px;font-size:12px;color:#333;">' +
       sig.replace(/\n/g, '<br>') + '</div>';
