@@ -169,10 +169,10 @@ Naming convention (inherited from `tg-proxy`/`tick-proxy`):
 | `message-search` | `search_messages` | ❌ | IMAP filters + client-side regex (full engine) |
 | `message-thread` | `get_thread` | ❌ | conversation view by Message-ID (oldest-first) |
 | `message-mark` | `mark_messages` | ❌ | seen/flagged/answered/draft — reversible, **read-back verified** |
-| `message-move` | `move_messages` | ❌ | reversible, **read-back verified** |
-| `message-archive` | `archive_messages` | ❌ | auto-detected Archive folder, **verified** |
-| `message-trash` | `trash_messages` | ❌ | recoverable delete, **verified** |
-| `message-spam` | `mark_as_spam` | ❌ | auto-detected Spam/Junk folder, **verified** |
+| `message-move` | `move_messages` | ✅ | reviewer-confirmed move, **read-back verified** |
+| `message-archive` | `archive_messages` | ✅ | reviewer-confirmed move to auto-detected Archive folder, **verified** |
+| `message-trash` | `trash_messages` | ✅ | reviewer-confirmed recoverable delete, **verified** |
+| `message-spam` | `mark_as_spam` | ✅ | reviewer-confirmed move to auto-detected Spam/Junk folder, **verified** |
 | `message-delete` | `delete_messages` | ✅ | irreversible — preflight + identity lock + absence poll |
 
 ### Compose (4)

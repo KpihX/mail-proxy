@@ -13,18 +13,25 @@ from __future__ import annotations
 
 import email
 import email.header
+import imaplib
 import logging
 import re
 import socket
+import ssl
 from collections.abc import Callable
 from datetime import UTC, datetime
 from email.message import Message as EmailMessage
 from functools import wraps
-from typing import Any, Self
+from typing import Any, Protocol, Self, cast
 
 import html2text
 import imapclient
-from imapclient.exceptions import IMAPClientError, LoginError
+from imapclient.exceptions import (
+    IMAPClientAbortError,
+    IMAPClientError,
+    LoginError,
+    ProtocolError,
+)
 
 from ..config import AccountDef, api_timeout
 from ..exceptions import MailAPIError
@@ -38,6 +45,46 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_non_ascii(value: str) -> bool:
+    """Whether a search term needs UTF-8 wire encoding (IMAP literal)."""
+    return any(ord(ch) > 0x7F for ch in value)
+
+
+def _search_term(value: str) -> str | bytes:
+    """Prepare a search term for imapclient's SEARCH criteria.
+
+    ASCII terms are returned unchanged (plain `str`) — imapclient encodes
+    them safely under any charset.
+
+    Non-ASCII terms are pre-encoded to UTF-8 **bytes**. This is required for
+    two independent reasons, both verified against live Gmail/Outlook/Zimbra:
+
+    1. ``imapclient.to_bytes()`` defaults to ``us-ascii``, and
+       ``_normalise_search_criteria`` does not always forward the requested
+       charset (it drops it when recursing into nested criteria, and the
+       BADCHARSET retry path passes no charset at all). A `str` term would
+       then raise ``UnicodeEncodeError``. Pre-encoded bytes pass through
+       ``to_bytes()`` untouched, so the charset never matters.
+    2. ``IMAPClient._raw_command`` detects 8-bit arguments and sends them as
+       RFC 3501 **literals** (``{n}`` / ``{n+}``) instead of quoted strings.
+       Literals are the only wire form that carries raw UTF-8 reliably:
+       Gmail rejects non-ASCII quoted-strings with
+       ``BAD [Could not parse command]``, and Gmail advertises neither
+       ``ENABLE`` (RFC 6855 ``UTF8=ACCEPT``) nor ``LITERAL+``. imapclient
+       handles both the ``LITERAL+`` fast path and the plain-``{n}``
+       continuation handshake, so this works on every tested provider.
+    """
+    return value.encode("utf-8") if _is_non_ascii(value) else value
+
+
+class _ListCriteriaSearchClient(Protocol):
+    """Runtime imapclient search surface accepting structured criteria."""
+
+    def search(self, criteria: list[object], charset: str | None = None) -> list[int]:
+        """Search with imapclient's supported structured-criteria API."""
+        ...
 
 
 def _guard_imap(func: Callable[..., Any]) -> Callable[..., Any]:
@@ -233,6 +280,10 @@ class IMAPClient:
     def __init__(self, account: AccountDef) -> None:
         self.account = account
         self._client: imapclient.IMAPClient | None = None
+        # Latched when the server answers BADCHARSET (US-ASCII only): such a
+        # server cannot match non-ASCII SEARCH terms and silently returns no
+        # results, so those searches switch to client-side matching.
+        self._ascii_only_search = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -263,10 +314,25 @@ class IMAPClient:
                 ssl=cfg.tls,
                 timeout=api_timeout(),
             )
-        except (TimeoutError, socket.gaierror, ConnectionRefusedError, OSError) as exc:
+        except TimeoutError as exc:
             raise MailAPIError(
-                0,
-                f"Cannot reach IMAP server {cfg.host}:{cfg.port} ({exc}).",
+                0, f"IMAP connection to {cfg.host}:{cfg.port} timed out ({exc})."
+            ) from exc
+        except socket.gaierror as exc:
+            raise MailAPIError(
+                0, f"IMAP DNS resolution failed for {cfg.host}:{cfg.port} ({exc})."
+            ) from exc
+        except ssl.SSLError as exc:
+            raise MailAPIError(
+                0, f"IMAP TLS negotiation failed for {cfg.host}:{cfg.port} ({exc})."
+            ) from exc
+        except ConnectionRefusedError as exc:
+            raise MailAPIError(
+                0, f"IMAP connection refused by {cfg.host}:{cfg.port} ({exc})."
+            ) from exc
+        except OSError as exc:
+            raise MailAPIError(
+                0, f"IMAP network I/O failed for {cfg.host}:{cfg.port} ({exc})."
             ) from exc
         try:
             if self.account.auth_method == "oauth2":
@@ -287,11 +353,47 @@ class IMAPClient:
                 f"MAIL_{self.account.id.upper()}_LOGIN / _PASS or run "
                 "'mail-proxy admin setup'.",
             ) from exc
+        except TimeoutError as exc:
+            self._client = None
+            raise MailAPIError(
+                0, f"IMAP login to {cfg.host}:{cfg.port} timed out ({exc})."
+            ) from exc
+        except socket.gaierror as exc:
+            self._client = None
+            raise MailAPIError(
+                0, f"IMAP DNS resolution failed for {cfg.host}:{cfg.port} ({exc})."
+            ) from exc
+        except ssl.SSLError as exc:
+            self._client = None
+            raise MailAPIError(
+                0, f"IMAP TLS negotiation failed for {cfg.host}:{cfg.port} ({exc})."
+            ) from exc
+        except ConnectionRefusedError as exc:
+            self._client = None
+            raise MailAPIError(
+                0, f"IMAP connection refused by {cfg.host}:{cfg.port} ({exc})."
+            ) from exc
+        except OSError as exc:
+            self._client = None
+            raise MailAPIError(
+                0, f"IMAP network I/O failed for {cfg.host}:{cfg.port} ({exc})."
+            ) from exc
+        except IMAPClientAbortError as exc:
+            self._client = None
+            raise MailAPIError(
+                0, f"IMAP connection aborted by {cfg.host}:{cfg.port} ({exc})."
+            ) from exc
+        except ProtocolError as exc:
+            self._client = None
+            raise MailAPIError(
+                0, f"IMAP protocol error from {cfg.host}:{cfg.port} ({exc})."
+            ) from exc
         except IMAPClientError as exc:
             self._client = None
             raise MailAPIError(
                 0, f"IMAP login failed for {self.account.id!r}: {exc}."
             ) from exc
+        self._activate_utf8_mailboxes()
         return self
 
     def disconnect(self) -> None:
@@ -337,6 +439,50 @@ class IMAPClient:
         if self._client is None:
             raise MailAPIError(0, "IMAP client is not connected.")
         return self._client
+
+    def _activate_utf8_mailboxes(self) -> None:
+        """Enable RFC 6855 UTF-8 mailbox names when the server supports it.
+
+        The classic IMAP fallback remains modified UTF-7.  UTF-8 is activated
+        only after authentication and only when ``ENABLE UTF8=ACCEPT`` succeeds;
+        this preserves the RFC 3501 path for older servers.
+        """
+        client = self._c()
+        raw = client._imap
+        capabilities = {
+            cap.decode().upper() if isinstance(cap, bytes) else cap.upper()
+            for cap in client.capabilities()
+        }
+        if "ENABLE" not in capabilities:
+            return
+        try:
+            status, _ = raw.enable("UTF8=ACCEPT")
+        except imaplib.IMAP4.error as exc:
+            logger.debug("IMAP server rejected UTF8=ACCEPT: %s", exc)
+            return
+        if status == "OK" and raw.utf8_enabled:
+            client.folder_encode = False
+
+    def _select_folder(self, folder: str, *, readonly: bool = False) -> dict[Any, Any]:
+        """Select a mailbox through the connection's negotiated name codec."""
+        return self._c().select_folder(folder, readonly=readonly)
+
+    @_guard_imap
+    def sent_folder(self) -> str:
+        """Resolve the server-declared Sent mailbox through ``\\Sent``.
+
+        Returns:
+            str: Exact server folder name carrying the ``\\Sent`` attribute.
+
+        Raises:
+            MailAPIError: When the server exposes no special-use Sent folder.
+        """
+        for folder in self.list_folders():
+            if "\\Sent" in folder.attributes:
+                return folder.name
+        raise MailAPIError(
+            0, "IMAP server does not expose a folder with the \\Sent attribute."
+        )
 
     # ------------------------------------------------------------------
     # Folder operations
@@ -393,11 +539,26 @@ class IMAPClient:
     # Search
     # ------------------------------------------------------------------
 
-    def build_imap_criteria(self, criteria: SearchCriteria) -> list[object]:
+    def build_imap_criteria(
+        self, criteria: SearchCriteria, query_key: str | None = None
+    ) -> list[object]:
         """Translate SearchCriteria into an imapclient-compatible criteria list.
+
+        Non-ASCII terms are pre-encoded to UTF-8 bytes so imapclient sends
+        them as RFC 3501 literals (see `_search_term`).
 
         Args:
             criteria (SearchCriteria): Declarative search.
+            query_key (str | None): When set (`"SUBJECT"` or `"BODY"`), the
+                free-text `query` is emitted as a FLAT `[query_key, term]`
+                pair instead of the nested `OR` form. Required for non-ASCII
+                queries: imapclient's nested-criteria handling appends the
+                closing paren directly onto the last element
+                (`inner[-1] + b")"`), which returns plain `bytes` and drops
+                the `_quoted` wrapper — the quotes and the paren then end up
+                *inside* the literal payload, producing a server-side parse
+                error. `search()` splits such queries into two flat searches
+                and unions the UIDs.
 
         Returns:
             list[object]: IMAP search keys, `["ALL"]` when empty.
@@ -407,6 +568,10 @@ class IMAPClient:
             ['UNSEEN']
             >>> IMAPClient(account).build_imap_criteria(SearchCriteria(query="x"))
             ['OR', ['SUBJECT', 'x'], ['BODY', 'x']]
+            >>> IMAPClient(account).build_imap_criteria(
+            ...     SearchCriteria(query="x"), query_key="BODY"
+            ... )
+            ['BODY', 'x']
         """
         c: list[object] = []
         if criteria.unseen_only:
@@ -414,19 +579,23 @@ class IMAPClient:
         if criteria.flagged_only:
             c.append("FLAGGED")
         if criteria.sender:
-            c += ["FROM", criteria.sender]
+            c += ["FROM", _search_term(criteria.sender)]
         if criteria.subject_filter:
-            c += ["SUBJECT", criteria.subject_filter]
+            c += ["SUBJECT", _search_term(criteria.subject_filter)]
         if criteria.to_filter:
-            c += ["TO", criteria.to_filter]
+            c += ["TO", _search_term(criteria.to_filter)]
         if criteria.cc_filter:
-            c += ["CC", criteria.cc_filter]
+            c += ["CC", _search_term(criteria.cc_filter)]
         if criteria.since:
             c += ["SINCE", criteria.since.date()]
         if criteria.before:
             c += ["BEFORE", criteria.before.date()]
         if criteria.query:
-            c += ["OR", ["SUBJECT", criteria.query], ["BODY", criteria.query]]
+            term = _search_term(criteria.query)
+            if query_key:
+                c += [query_key, term]
+            else:
+                c += ["OR", ["SUBJECT", term], ["BODY", term]]
         if criteria.has_attachment:
             c += ["HEADER", "Content-Type", "multipart"]
         if criteria.min_size is not None:
@@ -434,12 +603,118 @@ class IMAPClient:
         if criteria.max_size is not None:
             c += ["SMALLER", criteria.max_size]
         if criteria.keyword:
-            c += ["KEYWORD", criteria.keyword]
+            c += ["KEYWORD", _search_term(criteria.keyword)]
         return c or ["ALL"]
+
+    def _run_search(self, imap_criteria: list[object]) -> list[int]:
+        """Execute one SEARCH, tolerating servers that reject the charset.
+
+        Outlook IMAP rejects an explicit ``CHARSET UTF-8`` even for purely
+        structural criteria such as ``ALL`` and ``UNSEEN``, answering
+        ``BADCHARSET (US-ASCII)``. On that server-declared response only,
+        the same criteria are retried with no charset declaration. This stays
+        safe for non-ASCII terms because they are already UTF-8 **bytes**
+        (see `_search_term`), so no `str` is ever re-encoded under the
+        ``us-ascii`` default and the values travel as IMAP literals.
+
+        A ``BADCHARSET`` answer also latches `_ascii_only_search`: such a
+        server declares it supports US-ASCII only, and was verified live to
+        silently return ZERO matches for accented terms it does hold (e.g.
+        Outlook misses `rentrée` in a subject it matches on `Crous`).
+        `search()` reads that flag and switches to client-side matching so
+        the result stays correct instead of silently empty.
+        """
+        search_client = cast(_ListCriteriaSearchClient, self._c())
+        try:
+            return search_client.search(imap_criteria, "UTF-8")
+        except IMAPClientError as exc:
+            if "BADCHARSET" not in str(exc).upper():
+                raise
+            self._ascii_only_search = True
+            logger.info(
+                "IMAP server rejected UTF-8 SEARCH charset; retrying without charset."
+            )
+            return search_client.search(imap_criteria)
+
+    @staticmethod
+    def _matches_all_terms(haystacks: dict[str, str], terms: dict[str, str]) -> bool:
+        """Case-insensitive substring match of every client-side term."""
+        for field, needle in terms.items():
+            hay = haystacks.get(field, "")
+            if needle.casefold() not in hay.casefold():
+                return False
+        return True
+
+    def _client_side_search(self, criteria: SearchCriteria) -> list[int]:
+        """Match non-ASCII terms locally, for servers that cannot do it.
+
+        Used only when the server declared ``BADCHARSET (US-ASCII)``. The
+        server still does all the cheap structural narrowing it *can* do
+        (flags, dates, sizes, and any ASCII text term); only the non-ASCII
+        terms are re-applied here, against decoded headers and body text.
+        That keeps the candidate set small while making accented search
+        actually correct on such servers.
+        """
+        ascii_only = criteria.model_copy(
+            update={
+                field: None
+                for field in (
+                    "query",
+                    "sender",
+                    "subject_filter",
+                    "to_filter",
+                    "cc_filter",
+                )
+                if (value := getattr(criteria, field)) and _is_non_ascii(value)
+            }
+        )
+        candidates = sorted(
+            self._run_search(self.build_imap_criteria(ascii_only)), reverse=True
+        )
+        if not candidates:
+            return []
+
+        terms: dict[str, str] = {}
+        for field, key in (
+            ("sender", "from"),
+            ("subject_filter", "subject"),
+            ("to_filter", "to"),
+            ("cc_filter", "cc"),
+        ):
+            value = getattr(criteria, field)
+            if value and _is_non_ascii(value):
+                terms[key] = value
+        query = (
+            criteria.query if criteria.query and _is_non_ascii(criteria.query) else None
+        )
+
+        matched: list[int] = []
+        for uid, from_str, subject, body in self.fetch_bodies_for_pattern(
+            candidates, criteria.folder
+        ):
+            fields = {"from": from_str, "subject": subject, "to": "", "cc": ""}
+            if not self._matches_all_terms(fields, terms):
+                continue
+            if query is not None:
+                folded = query.casefold()
+                if folded not in subject.casefold() and folded not in body.casefold():
+                    continue
+            matched.append(uid)
+            if len(matched) >= criteria.limit:
+                break
+        return matched
 
     @_guard_imap
     def search(self, criteria: SearchCriteria) -> list[int]:
         """Return UIDs matching the criteria (single folder, newest first).
+
+        A non-ASCII free-text `query` is executed as two FLAT searches
+        (``SUBJECT`` then ``BODY``) whose UIDs are unioned, instead of one
+        nested ``OR`` search. imapclient corrupts literals inside nested
+        criteria (it appends the closing paren onto the last element, which
+        drops the `_quoted` wrapper and buries the quotes and paren inside
+        the literal payload), so the nested form is unusable for UTF-8
+        terms. ASCII queries keep the single-round-trip nested ``OR``.
 
         Args:
             criteria (SearchCriteria): Declarative search — `folder` selects.
@@ -450,11 +725,38 @@ class IMAPClient:
         Examples:
             >>> IMAPClient(account).search(SearchCriteria(folder="INBOX", limit=5))
             [128, 127, 126, 125, 124]
+            >>> IMAPClient(account).search(SearchCriteria(query="fête", limit=5))
+            [17981]
         """
-        self._c().select_folder(criteria.folder, readonly=True)
-        imap_criteria = self.build_imap_criteria(criteria)
-        uids = self._c().search(imap_criteria, "UTF-8")  # type: ignore[reportArgumentType]
-        uids = sorted(uids, reverse=True)
+        self._select_folder(criteria.folder, readonly=True)
+        has_non_ascii = any(
+            value and _is_non_ascii(value)
+            for value in (
+                criteria.query,
+                criteria.sender,
+                criteria.subject_filter,
+                criteria.to_filter,
+                criteria.cc_filter,
+            )
+        )
+        if has_non_ascii and self._ascii_only_search:
+            return self._client_side_search(criteria)
+        if criteria.query and _is_non_ascii(criteria.query):
+            found: set[int] = set()
+            for query_key in ("SUBJECT", "BODY"):
+                found.update(
+                    self._run_search(self.build_imap_criteria(criteria, query_key))
+                )
+            uids = sorted(found, reverse=True)
+        else:
+            uids = sorted(
+                self._run_search(self.build_imap_criteria(criteria)), reverse=True
+            )
+        if not uids and has_non_ascii and self._ascii_only_search:
+            # The server only revealed its US-ASCII-only limitation during
+            # THIS search (the flag latches inside `_run_search`), and an
+            # empty result from such a server is not trustworthy.
+            return self._client_side_search(criteria)
         return uids[: criteria.limit]
 
     @_guard_imap
@@ -479,7 +781,7 @@ class IMAPClient:
             False
         """
         try:
-            self._c().select_folder(folder, readonly=True)
+            self._select_folder(folder, readonly=True)
             present = self._c().search(["UID", uid])  # type: ignore[reportArgumentType]
         except IMAPClientError:
             return False
@@ -508,7 +810,7 @@ class IMAPClient:
         """
         if not uids:
             return []
-        self._c().select_folder(folder, readonly=True)
+        self._select_folder(folder, readonly=True)
         data = self._c().fetch(uids, ["ENVELOPE", "FLAGS", "BODYSTRUCTURE"])
         summaries = []
         for uid, msg_data in data.items():  # type: ignore[reportGeneralTypeIssues]
@@ -568,7 +870,7 @@ class IMAPClient:
             >>> IMAPClient(account).fetch_message(999999) is None
             True
         """
-        self._c().select_folder(folder, readonly=True)
+        self._select_folder(folder, readonly=True)
         data = self._c().fetch([uid], ["RFC822", "FLAGS"])
         if uid not in data:  # type: ignore[reportGeneralTypeIssues]
             return None
@@ -641,7 +943,7 @@ class IMAPClient:
         """
         if not uids:
             return []
-        self._c().select_folder(folder, readonly=True)
+        self._select_folder(folder, readonly=True)
         data = self._c().fetch(uids, ["RFC822"])
         results = []
         for uid, msg_data in data.items():  # type: ignore[reportGeneralTypeIssues]
@@ -675,7 +977,7 @@ class IMAPClient:
         Examples:
             >>> IMAPClient(account).set_flags([42], "INBOX", ["\\\\Seen"], add=True)
         """
-        self._c().select_folder(folder)
+        self._select_folder(folder)
         if add:
             self._c().add_flags(uids, flags)
         else:
@@ -696,7 +998,7 @@ class IMAPClient:
             >>> IMAPClient(account).current_flags([42], "INBOX")
             {42: ['\\\\Seen']}
         """
-        self._c().select_folder(folder, readonly=True)
+        self._select_folder(folder, readonly=True)
         data = self._c().fetch(uids, ["FLAGS"])
         return {
             uid: [  # type: ignore[reportGeneralTypeIssues]
@@ -721,7 +1023,7 @@ class IMAPClient:
         Examples:
             >>> IMAPClient(account).move_messages([42], "INBOX", "Archive")
         """
-        self._c().select_folder(src_folder)
+        self._select_folder(src_folder)
         capabilities = self._c().capabilities()
         if b"MOVE" in capabilities:
             self._c().move(uids, dst_folder)
@@ -744,7 +1046,7 @@ class IMAPClient:
         Examples:
             >>> IMAPClient(account).delete_messages([42], "INBOX")
         """
-        self._c().select_folder(folder)
+        self._select_folder(folder)
         self._c().delete_messages(uids)
         self._c().expunge()
 
@@ -794,7 +1096,7 @@ class IMAPClient:
             >>> IMAPClient(account).download_attachment(42, "report.pdf")
             (b'%PDF…', 'application/pdf')
         """
-        self._c().select_folder(folder, readonly=True)
+        self._select_folder(folder, readonly=True)
         data = self._c().fetch([uid], ["RFC822"])
         if uid not in data:
             raise MailAPIError(0, f"Message UID {uid} not found in {folder}.")
@@ -904,7 +1206,7 @@ class IMAPClient:
         Examples:
             >>> IMAPClient(account).set_keyword([42], "INBOX", "todo", add=True)
         """
-        self._c().select_folder(folder)
+        self._select_folder(folder)
         if add:
             self._c().add_flags(uids, [keyword])
         else:
@@ -924,7 +1226,7 @@ class IMAPClient:
             >>> IMAPClient(account).list_keywords("INBOX")
             ['important', 'todo']
         """
-        resp = self._c().select_folder(folder, readonly=True)
+        resp = self._select_folder(folder, readonly=True)
         raw_flags = resp.get(b"PERMANENTFLAGS", [])
         standard = {"\\Seen", "\\Answered", "\\Flagged", "\\Deleted", "\\Draft", "\\*"}
         result = []

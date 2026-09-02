@@ -15,8 +15,6 @@ from ..api.models import SearchCriteria
 from ..client import MailClient
 from .base import AccountScoped, action_def, require_approval
 
-_SENT_CANDIDATES = ["Sent", "Sent Items", "Sent Messages", "[Gmail]/Sent Mail"]
-
 
 class ComposeBase(AccountScoped):
     """Shared fields of every compose payload.
@@ -155,7 +153,7 @@ class MessageDraftPayload(AccountScoped):
 
 
 def _resolve_sent_folder(imap: IMAPClient) -> str:
-    """Return the account's Sent folder (first existing candidate).
+    """Return the account's server-declared Sent folder.
 
     Args:
         imap (IMAPClient): Connected IMAP client.
@@ -167,11 +165,7 @@ def _resolve_sent_folder(imap: IMAPClient) -> str:
         >>> _resolve_sent_folder(imap)
         'Sent'
     """
-    existing = {f.name for f in imap.list_folders()}
-    for name in _SENT_CANDIDATES:
-        if name in existing:
-            return name
-    return _SENT_CANDIDATES[0]
+    return imap.sent_folder()
 
 
 def _save_copy_to_sent(

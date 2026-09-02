@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.2.8 — 2026-09-02
+
+- **Non-ASCII search now works on every provider (Gmail, Outlook, Zimbra).**
+  Any accented / non-Latin search term (`query`, `sender`, `subject_filter`,
+  `to_filter`, `cc_filter`, `keyword`) previously either crashed with
+  `UnicodeEncodeError` or was rejected by the server
+  (`BAD [Could not parse command]` on Gmail, `parse error: expected ')'` on
+  Zimbra). Two root causes, both fixed in mail-proxy — **no monkeypatching of
+  imapclient**:
+
+  1. **Terms are pre-encoded to UTF-8 bytes** (`_search_term`). `imapclient`'s
+     `to_bytes()` defaults to `us-ascii` and the charset is not always
+     forwarded (it is dropped when recursing into nested criteria, and the
+     Outlook `BADCHARSET` retry passes no charset at all), so a `str` term
+     raised `UnicodeEncodeError`. Bytes pass through untouched, so the charset
+     no longer matters. This is also what makes `IMAPClient._raw_command`
+     send the value as an RFC 3501 **literal** (`{n}` / `{n+}`) — the only
+     wire form that reliably carries UTF-8: Gmail rejects non-ASCII
+     quoted-strings and advertises neither `ENABLE` (RFC 6855 `UTF8=ACCEPT`)
+     nor `LITERAL+`, and imapclient transparently handles both the `LITERAL+`
+     fast path and the plain-`{n}` continuation handshake.
+  2. **Non-ASCII free-text queries never use nested criteria.** imapclient
+     builds the nested `OR` form by appending the closing paren onto the last
+     element (`inner[-1] + b")"`), which returns plain `bytes` and drops the
+     `_quoted` wrapper — so the quotes *and* the paren end up **inside** the
+     literal payload, corrupting the command. `search()` now splits such a
+     query into two FLAT searches (`SUBJECT`, then `BODY`) and unions the
+     UIDs. ASCII queries keep the single-round-trip nested `OR`.
+
+  ASCII behavior is provably unchanged (all pre-existing `test_search.py`
+  assertions pass untouched). 10 new regression tests cover flat/nested
+  encoding, the split, UID union + de-duplication, limit handling,
+  combination with other filters, and the Outlook `BADCHARSET` retry path.
+
+## 0.2.7 — 2026-09-02
+
+- **Unicode mailbox negotiation:** after IMAP authentication, activate
+  `UTF8=ACCEPT` only when the server advertises and accepts it; otherwise keep
+  RFC modified UTF-7. All mailbox selection paths now use one negotiated
+  transport helper, so UTF-8 folder names behave consistently for reads and
+  writes.
+- **Semantic Sent resolution:** sent-copy operations resolve the server's
+  special-use `\\Sent` folder instead of guessing localized names.
+
+## 0.2.6 — 2026-09-02
+
+- **Outlook IMAP search compatibility:** on a server-declared `BADCHARSET`
+  response to `SEARCH CHARSET UTF-8`, retry once without an explicit charset.
+  All other IMAP errors retain their normal failure path; this restores Hotmail
+  `ALL` and `UNSEEN` listing without weakening error visibility.
+
+## 0.2.5 — 2026-09-02
+
+- **Message-move HITL:** `message-move`, `message-archive`, `message-trash`, and
+  `message-spam` now require centralized browser approval before their already-mandatory
+  read-back verification. `message-mark` and `label-set` remain direct reversible writes.
+
+## 0.2.4 — 2026-09-02
+
+- **IMAP transport hardening:** `IMAPClient.connect()` now translates socket-open and
+  authentication-stage failures independently: timeout, DNS, TLS, refused connection, generic
+  network I/O, server abort, protocol error, and rejected credentials all become actionable
+  `MailAPIError`s. `admin auth status` therefore returns a per-account probe error rather than
+  leaking a traceback when a server times out during `LOGIN`.
+- **Validation runner:** `make check` now runs through `uv run --all-groups`, making the declared
+  `dev` dependencies (ruff, pyright, pytest) consistently available to every quality subcommand.
+
+## 0.2.3 — 2026-09-02
+
+- **`admin auth default` UX:** the default account is now selected explicitly with required
+  `-a` / `--account <id|alias|email-prefix>`. The HITL confirmation is bound to that selection;
+  the reviewed payload cannot redirect the change. Omitting `-a`/`--account` now returns Typer's
+  actionable usage error instead of a dead JSON instruction for `account_id`.
+
 ## 0.2.0 — 2026-09-01
 
 - **Multi-account architecture:** accounts moved from hardcoded `AccountDef` list in `config.py`

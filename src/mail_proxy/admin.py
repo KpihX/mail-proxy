@@ -499,67 +499,42 @@ def auth_logout(account_id: str | None = None) -> AdminResult:
     )
 
 
-def auth_default() -> AdminResult:
+def auth_default(account: str) -> AdminResult:
     """Set the default account used when -a is omitted.
 
-    The HITL form shows all accounts with their current default status.
-    The user picks one, and it becomes the default (all others lose it).
+    The account is selected explicitly by the CLI's `-a` / `--account` option.
+    HITL confirms that selection; the reviewed payload cannot change it.
 
     Returns:
         tuple[dict, Status, bool, str]: A tuple containing the result
         dict, the HITL response status, edited flag, and reviewer comment.
 
     Examples:
-        - Set default to poly:
-            `mail-proxy admin auth default`
+        - Set default to an account ID:
+            `mail-proxy admin auth default -a poly`
             → {"account":"poly","default":true}
+        - Set default through an alias:
+            `mail-proxy admin auth default --account work`
+            → {"account":"outlook","default":true}
         - Reviewer rejected:
-            `mail-proxy admin auth default`
+            `mail-proxy admin auth default -a poly`
             → (rejected envelope, exit 1 — nothing changed)
-        - Account not found:
-            `mail-proxy admin auth default`
+        - Unknown account:
+            `mail-proxy admin auth default -a unknown`
             → (error, exit 1 — account does not exist)
     """
     load_env()
     accounts = load_accounts(force=True)
-
-    # Build list for HITL form
-    candidates = []
-    for a in accounts:
-        candidates.append(
-            {
-                "id": a.id,
-                "email": a.email,
-                "is_default": a.default,
-            }
-        )
+    target_id = get_account(account).id
 
     form: dict[str, Any] = {
         "action": "auth_default",
-        "accounts": candidates,
-        "instructions": "Set 'account_id' to the account you want as default.",
+        "account": target_id,
+        "instructions": f"Confirm {target_id!r} as the default account.",
     }
     response = request_approval("admin auth default", form)
     if response.status == "rejected":
         return None, "rejected", response.edited, response.comment
-
-    payload = response.payload if isinstance(response.payload, dict) else form
-    target_id = str(payload.get("account_id", "")).strip()
-
-    if not target_id:
-        raise MailProxyError("account_id is required.")
-
-    # Verify account exists
-    found = False
-    for a in accounts:
-        if a.id == target_id:
-            found = True
-            break
-    if not found:
-        raise MailProxyError(
-            f"Account {target_id!r} not found. Known: "
-            f"{', '.join(a.id for a in accounts)}."
-        )
 
     # Set default — clear all others, set target
     for a in accounts:

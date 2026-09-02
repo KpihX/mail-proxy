@@ -10,10 +10,11 @@ BIN_DIR   := $(REAL_HOME)/.local/bin
 
 # Tooling
 UV     := $(shell command -v uv 2>/dev/null || echo uv)
-PYTHON := $(UV) run python
+UV_RUN := $(UV) run --all-groups
+PYTHON := $(UV_RUN) python
 PYTEST := $(PYTHON) -m pytest
 
-PY_FILES := $(shell $(UV) run python -c 'from pathlib import Path; print(" ".join(map(str, Path("$(PKG_DIR)").rglob("*.py"))))')
+PY_FILES := $(shell $(UV_RUN) python -c 'from pathlib import Path; print(" ".join(map(str, Path("$(PKG_DIR)").rglob("*.py"))))')
 
 .PHONY: help check smoke uv-install uv-link uv-uninstall uv-build uv-publish git-push push release git-install-hooks
 
@@ -23,14 +24,14 @@ help: ## Show help
 # ─── Quality ───
 
 check: smoke ## Run all checks (ruff lint+fix + ruff format + py_compile + pyright + pytest + smoke)
-	@$(UV) run ruff check --fix $(PKG_DIR)/
-	@$(UV) run ruff format $(PKG_DIR)/
+	@$(UV_RUN) ruff check --fix $(PKG_DIR)/
+	@$(UV_RUN) ruff format $(PKG_DIR)/
 	@$(PYTHON) -m py_compile $(PY_FILES)
-	@$(UV) run pyright $(PKG_DIR)/
+	@$(UV_RUN) pyright $(PKG_DIR)/
 	@$(PYTHON) -m pytest tests/ -v
 
 smoke: ## Smoke test — CLI + registry integrity (mail-proxy do --help)
-	@$(UV) run mail-proxy do --help > /dev/null 2>&1 || (echo "❌ CLI smoke test failed"; exit 1)
+	@$(UV_RUN) mail-proxy do --help > /dev/null 2>&1 || (echo "❌ CLI smoke test failed"; exit 1)
 	@$(PYTHON) -c "from mail_proxy.actions.registry import REGISTRY as R; assert len(R)==30, len(R); assert len(R)==len(set(R))"
 	@echo "✅ CLI smoke test passed"
 

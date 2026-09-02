@@ -39,9 +39,11 @@ app = typer.Typer(
     add_completion=False,
 )
 app_admin = typer.Typer(
-    help="Admin commands: doctor, status, auth login|status|logout, reset, purge."
+    help="Admin commands: doctor, status, auth login|status|logout|default, reset, purge."
 )
-app_admin_auth = typer.Typer(help="Authentication commands: login, status, logout.")
+app_admin_auth = typer.Typer(
+    help="Authentication commands: login, status, logout, default."
+)
 app_do = typer.Typer(
     help="RPC actions: inbox-check, message-list, message-send, signature-list, …",
     add_completion=False,
@@ -405,9 +407,16 @@ def admin_auth_logout() -> None:
 
 
 @app_admin_auth.command("default")
-def admin_auth_default() -> None:
-    """Set the default account used when -a is omitted."""
-    _run_admin(admin.auth_default)
+def admin_auth_default(
+    account: str = typer.Option(
+        ...,
+        "--account",
+        "-a",
+        help="Account ID, alias, or email prefix to make default.",
+    ),
+) -> None:
+    """Set the default account used when -a is omitted (HITL-confirmed)."""
+    _run_admin(lambda: admin.auth_default(account))
 
 
 @app_admin.command("reset")

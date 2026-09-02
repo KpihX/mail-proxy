@@ -16,7 +16,7 @@ on the ADN of [`tg-proxy`](https://github.com/KpihX/tg-proxy).
 Single binary with two namespaces:
 
 ```bash
-mail-proxy admin doctor|status|auth login|status|logout|reset|purge   # Admin (always JSON)
+mail-proxy admin doctor|status|auth login|status|logout|default|reset|purge   # Admin (always JSON)
 mail-proxy do <action> [payload|file]                                  # 24 RPC actions
 ```
 
@@ -29,6 +29,7 @@ mail-proxy do <action> [payload|file]                                  # 24 RPC 
 | `auth login` | Add one account via smart HITL form (type selector → email → password/OAuth2) → writes `accounts.json` + `.env` atomically |
 | `auth status` | Show auth state per account (configured / missing password) |
 | `auth logout` | Remove password for one account (HITL-confirmed) |
+| `auth default -a <account>` | Set the default account by ID, alias, or email prefix (HITL-confirmed) |
 | `reset` | Clear all passwords (HITL-confirmed) |
 | `purge` | Delete the config directory (HITL-confirmed) |
 
@@ -160,6 +161,7 @@ mail-proxy admin doctor        # fix any permission issues
 mail-proxy do inbox-check                        # default account
 mail-proxy do inbox-check -a work                # specific account by alias
 mail-proxy do message-send '{...}' -a gmail      # specific account by ID
+mail-proxy admin auth default -a work             # select the default account explicitly
 ```
 
 ---

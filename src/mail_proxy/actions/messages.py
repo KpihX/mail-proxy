@@ -1,9 +1,9 @@
 """Message actions — read, search, flags, moves, archive/trash/spam/delete.
 
-Deletion is the only irreversible message write: it is HITL-gated, preflighted
-with a locked identity, and verified by polling the folder until the UIDs are
-gone. Moves and flag changes are reversible and run without HITL but carry a
-mandatory read-back verification (`@require_verification`).
+Deletion is irreversible: it is HITL-gated, preflighted with a locked identity,
+and verified by polling the folder until the UIDs are gone. Every message move
+(manual move, archive, trash, or spam) is also HITL-gated and read-back
+verified. Flag changes remain reversible and run without HITL.
 """
 
 import re
@@ -580,11 +580,12 @@ def message_mark(
     return data, verification
 
 
+@require_approval()
 @require_verification("uids", "destination_folder")
 def message_move(
     client: MailClient, p: MessageMovePayload
 ) -> tuple[dict, Verification]:
-    """Move messages from one folder to another (read-back verified).
+    """Move messages from one folder to another (HITL + read-back verified).
 
     Uses IMAP MOVE when the server supports it, otherwise COPY+DELETE.
 
@@ -680,11 +681,12 @@ def _verified_simple_move(
     return data, verification
 
 
+@require_approval()
 @require_verification("uids", "folder")
 def message_archive(
     client: MailClient, p: MessageMoveSimplePayload
 ) -> tuple[dict, Verification]:
-    """Archive messages — move them to the Archive folder (read-back verified).
+    """Archive messages — move them to the Archive folder (HITL + verified).
 
     Automatically detects the correct archive folder name (Archive, Archives,
     All Mail…).
@@ -708,11 +710,12 @@ def message_archive(
     return _verified_simple_move(client, p, _ARCHIVE_CANDIDATES, "archived", "archive")
 
 
+@require_approval()
 @require_verification("uids", "folder")
 def message_trash(
     client: MailClient, p: MessageMoveSimplePayload
 ) -> tuple[dict, Verification]:
-    """Move messages to Trash — the recoverable delete (read-back verified).
+    """Move messages to Trash — the recoverable delete (HITL + verified).
 
     Prefer this over `message-delete` for safety.
 
@@ -735,11 +738,12 @@ def message_trash(
     return _verified_simple_move(client, p, _TRASH_CANDIDATES, "trashed", "trash")
 
 
+@require_approval()
 @require_verification("uids", "folder")
 def message_spam(
     client: MailClient, p: MessageMoveSimplePayload
 ) -> tuple[dict, Verification]:
-    """Report messages as spam — move them to the Spam/Junk folder (verified).
+    """Report messages as spam — move them to the Spam/Junk folder (HITL + verified).
 
     Automatically detects the correct spam folder name (Spam, Junk,
     Junk E-mail, [Gmail]/Spam).
@@ -845,14 +849,16 @@ ACTIONS = [
     ActionDef("message-search", MessageSearchPayload, message_search, group="Messages"),
     ActionDef("message-thread", MessageThreadPayload, message_thread, group="Messages"),
     ActionDef("message-mark", MessageMarkPayload, message_mark, group="Messages"),
-    ActionDef("message-move", MessageMovePayload, message_move, group="Messages"),
-    ActionDef(
+    action_def("message-move", MessageMovePayload, message_move, group="Messages"),
+    action_def(
         "message-archive", MessageMoveSimplePayload, message_archive, group="Messages"
     ),
-    ActionDef(
+    action_def(
         "message-trash", MessageMoveSimplePayload, message_trash, group="Messages"
     ),
-    ActionDef("message-spam", MessageMoveSimplePayload, message_spam, group="Messages"),
+    action_def(
+        "message-spam", MessageMoveSimplePayload, message_spam, group="Messages"
+    ),
     action_def(
         "message-delete", MessageDeletePayload, message_delete, group="Messages"
     ),

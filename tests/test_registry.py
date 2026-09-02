@@ -18,6 +18,10 @@ HITL = {
     "message-reply",
     "message-forward",
     "message-draft",
+    "message-move",
+    "message-archive",
+    "message-trash",
+    "message-spam",
     "message-delete",
     "folder-delete",
     "raw",
@@ -98,10 +102,9 @@ def test_all_irreversible_actions_declare_preflight_and_locked_target():
         assert getattr(handler, "__preflight_identity_fields__", ()) == identity_fields
 
 
-def test_reversible_moves_and_marks_never_require_hitl():
-    """Moves and flag changes are reversible — no HITL, but read-back verified."""
-    for name in ("message-move", "message-archive", "message-trash", "message-spam",
-                 "message-mark", "label-set"):
+def test_reversible_marks_and_labels_never_require_hitl():
+    """Only message moves are reviewed; flags and labels remain direct writes."""
+    for name in ("message-mark", "label-set"):
         assert not REGISTRY[name].hitl, f"{name} must not require HITL"
         assert getattr(REGISTRY[name].handler, "__require_verification__", False), (
             f"{name} must declare read-back verification"
