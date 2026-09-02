@@ -236,7 +236,14 @@ class HITLServer(BaseHTTPRequestHandler):
                         'src="cid:sig_logo"',
                         f'src="data:image/png;base64,{b64}"',
                     )
-            except (MailProxyError, MailAPIError, FileNotFoundError, KeyError):
+            except (
+                MailProxyError,
+                MailAPIError,
+                FileNotFoundError,
+                KeyError,
+                TypeError,
+                ValueError,
+            ):
                 pass
         html = html.replace("{{RESOLVED_SIG_HTML}}", resolved_sig)
         return html

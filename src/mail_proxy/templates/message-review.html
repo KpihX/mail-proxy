@@ -171,11 +171,8 @@ function renderSignature(sig) {
   var resolved = document.getElementById('hitl-resolved-sig').textContent;
   if (resolved && resolved.trim()) {
     el.innerHTML = '<div style="border-top:1px solid #ccc;padding-top:8px;">' + resolved + '</div>';
-  } else if (!sig || sig === '') {
-    el.innerHTML = '<span class="sig-empty">No signature</span>';
   } else {
-    el.innerHTML = '<div style="border-top:1px solid #ccc;padding-top:8px;font-size:12px;color:#333;">' +
-      sig.replace(/\n/g, '<br>') + '</div>';
+    el.innerHTML = '';
   }
 }
 

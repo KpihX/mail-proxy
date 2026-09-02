@@ -127,3 +127,80 @@ def test_hitl_timeout_returns_rejected(monkeypatch):
     response = hitl.request_approval("raw", {"command": "STATUS"})
     assert response.status == "rejected"
     assert "timeout" in response.comment.lower()
+
+
+# ---------------------------------------------------------------------------
+# Signature rendering in HITL review pages
+#
+# Regression tests for the 4 signature cases:
+#   1. absent (key missing) → default signature rendered (logo + text)
+#   2. "default"            → default signature rendered (logo + text)
+#   3. ""                   → empty signature section (no text, no logo)
+#   4. custom text          → that exact text rendered
+#
+# Previously the HITL showed "Using default signature" as raw text instead of
+# the actual rendered logo, and showed "No signature" for the empty case.
+# ---------------------------------------------------------------------------
+
+
+def _fetch_review_html(url: str) -> str:
+    """Fetch the HTML content of a HITL review page."""
+    with urllib.request.urlopen(url) as resp:
+        return resp.read().decode("utf-8")
+
+
+def test_hitl_signature_absent_renders_default_logo(monkeypatch):
+    """When signature key is missing, HITL resolves default and renders HTML (not the keyword 'default')."""
+    worker, box = _start_approval(monkeypatch, "message-send", {
+        "to": ["a@b.fr"], "subject": "Test sig absent",
+        "body_text": "body",
+    })
+    html = _fetch_review_html(box["url"])
+    assert "hitl-resolved-sig" in html
+    assert "Using default" not in html
+    _submit(box["url"], "rejected")
+    worker.join(timeout=5)
+
+
+def test_hitl_signature_explicit_default_renders_logo(monkeypatch):
+    """When signature="default", HITL resolves to HTML (not the keyword 'default')."""
+    worker, box = _start_approval(monkeypatch, "message-send", {
+        "to": ["a@b.fr"], "subject": "Test sig default",
+        "body_text": "body", "signature": "default",
+    })
+    html = _fetch_review_html(box["url"])
+    assert "Using default" not in html
+    assert "hitl-resolved-sig" in html
+    _submit(box["url"], "rejected")
+    worker.join(timeout=5)
+
+
+def test_hitl_signature_empty_shows_empty_section(monkeypatch):
+    """When signature="", HITL renders an empty signature section (no logo, no text)."""
+    worker, box = _start_approval(monkeypatch, "message-send", {
+        "to": ["a@b.fr"], "subject": "Test sig empty",
+        "body_text": "body", "account_id": "poly",
+        "signature": "",
+    })
+    html = _fetch_review_html(box["url"])
+    assert "No signature" not in html
+    assert "Using default" not in html
+    assert 'id="sig-rendered"' in html
+    _submit(box["url"], "rejected")
+    worker.join(timeout=5)
+
+
+def test_hitl_signature_custom_text_renders_as_is(monkeypatch):
+    """When signature=custom text, HITL renders that exact text."""
+    custom = "My Custom Signature\nLine 2"
+    worker, box = _start_approval(monkeypatch, "message-send", {
+        "to": ["a@b.fr"], "subject": "Test sig custom",
+        "body_text": "body", "account_id": "poly",
+        "signature": custom,
+    })
+    html = _fetch_review_html(box["url"])
+    assert "My Custom Signature" in html
+    assert "Line 2" in html
+    assert "Using default" not in html
+    _submit(box["url"], "rejected")
+    worker.join(timeout=5)
