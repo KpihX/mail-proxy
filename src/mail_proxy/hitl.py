@@ -196,6 +196,20 @@ class HITLServer(BaseHTTPRequestHandler):
         html = html.replace("{{PAYLOAD_JSON}}", payload_display)
         html = html.replace("{{PAYLOAD_JSON_SAFE}}", payload_safe)
         html = html.replace("{{REQUEST_ID}}", req_id)
+        account_id = ""
+        account_email = ""
+        if isinstance(req.get("payload"), dict):
+            account_id = req["payload"].get("account_id", "")
+        if account_id:
+            try:
+                from .config import get_account
+
+                acct = get_account(account_id)
+                account_email = acct.email
+            except (ValueError, KeyError):
+                pass
+        html = html.replace("{{ACCOUNT_ID}}", account_id)
+        html = html.replace("{{ACCOUNT_EMAIL}}", account_email)
         return html
 
 

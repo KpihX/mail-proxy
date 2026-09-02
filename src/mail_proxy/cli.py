@@ -26,7 +26,7 @@ from .client import MailClient
 from .config import ensure_env
 from .display import console, print_error, print_json, print_meta, print_table
 from .doc import get_compact_help, get_full_help
-from .exceptions import MailProxyError
+from .exceptions import MailAPIError, MailProxyError
 from .hitl import request_approval
 from .logger import setup_logging
 from .models import Status, Verification, ok, rejected
@@ -154,6 +154,68 @@ def _autosave(action: str, result: dict) -> Path:
     return path
 
 
+# Actions whose payload carries UIDs we can resolve for HITL display.
+_UID_ACTIONS = frozenset(
+    {
+        "message-move",
+        "message-archive",
+        "message-trash",
+        "message-spam",
+        "message-delete",
+        "message-mark",
+        "message-reply",
+        "message-forward",
+    }
+)
+
+
+def _inject_uid_resolution(params: dict, action_name: str) -> None:
+    """Enrich params with a ``_uid_resolution`` dict for HITL display.
+
+    For every UID present in the payload (``uids`` list or ``uid`` single
+    field), fetch the IMAP summary so the reviewer sees the sender,
+    subject, date, and destination without leaving the HITL page.
+
+    The resolution dict is keyed by ``uid`` (int) → summary dict.  A
+    ``_uid_folder`` field is also injected with the resolved folder name
+    (from the payload or the IMAP summary).
+    """
+    if action_name not in _UID_ACTIONS:
+        return
+
+    account_id = params.get("account_id")
+    if not account_id:
+        return
+
+    raw_uids: list[int] = []
+    if "uids" in params and isinstance(params["uids"], list):
+        raw_uids = [int(u) for u in params["uids"] if u is not None]
+    elif "uid" in params and params["uid"] is not None:
+        raw_uids = [int(params["uid"])]
+    if not raw_uids:
+        return
+
+    folder = params.get("folder") or params.get("source_folder") or "INBOX"
+    try:
+        client = MailClient(account_id)
+        summaries = client.imap().fetch_summaries(raw_uids, folder)
+        client.close()
+    except (MailProxyError, MailAPIError):
+        return
+
+    resolution = {}
+    for s in summaries:
+        uid = s.uid
+        resolution[str(uid)] = {
+            "subject": s.subject,
+            "from": s.from_addr,
+            "date": str(s.date),
+            "folder": s.folder,
+        }
+    params["_uid_resolution"] = resolution
+    params["_uid_folder"] = folder
+
+
 def _execute(
     action: ActionDef, payload_raw: str | None, output_file: str | None, fmt: str
 ) -> None:
@@ -203,6 +265,7 @@ def _execute(
             print_error(str(exc))
             sys.exit(1)
     if action.hitl:
+        _inject_uid_resolution(params, action.name)
         response = request_approval(action.name, params)
         if response.status == "rejected":
             if client is not None:

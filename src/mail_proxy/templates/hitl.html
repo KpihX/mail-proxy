@@ -8,6 +8,7 @@
 </head>
 <body>
 <script type="application/json" id="payload-data">{{PAYLOAD_JSON}}</script>
+<script type="text/plain" id="hitl-account-email" style="display:none">{{ACCOUNT_EMAIL}}</script>
 
 <header class="hitl-header">
   <div>
@@ -22,6 +23,24 @@
 </header>
 
 <main class="hitl-container">
+  <section class="hitl-card" id="uid-resolution-card" style="display:none">
+    <h2>🔍 Messages Impactés <span class="field-label">resolved UIDs</span></h2>
+    <div class="hitl-card-body">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#1a1a2e;color:#fff;">
+            <th style="padding:8px;text-align:left;">UID</th>
+            <th style="padding:8px;text-align:left;">From</th>
+            <th style="padding:8px;text-align:left;">Subject</th>
+            <th style="padding:8px;text-align:left;">Date</th>
+            <th style="padding:8px;text-align:left;">Folder</th>
+          </tr>
+        </thead>
+        <tbody id="uid-resolution-body"></tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="hitl-card">
     <h2>📋 Action JSON <span class="field-label">editable · this complete object is submitted</span></h2>
     <div class="hitl-card-body">
@@ -44,10 +63,28 @@ try {
   ORIGINAL = {};
 }
 document.getElementById('payload').value = JSON.stringify(payload, null, 2);
-if (payload.account_id) {
+if (payload.account_id || document.getElementById('hitl-account-email').textContent) {
+  var email = document.getElementById('hitl-account-email').textContent;
+  var label = payload.account_id + (email ? ' — ' + email : '');
   document.getElementById('account-badge').innerHTML =
     '<span style="background:#0f3460;color:#e2e8f0;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;letter-spacing:0.5px">📧 ' +
-    payload.account_id + '</span>';
+    label + '</span>';
+}
+if (payload._uid_resolution && Object.keys(payload._uid_resolution).length > 0) {
+  var card = document.getElementById('uid-resolution-card');
+  var tbody = document.getElementById('uid-resolution-body');
+  card.style.display = '';
+  Object.keys(payload._uid_resolution).forEach(function(uid) {
+    var r = payload._uid_resolution[uid];
+    var tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border)';
+    tr.innerHTML = '<td style="padding:8px;font-weight:600;">' + uid + '</td>' +
+      '<td style="padding:8px;">' + (r.from || '') + '</td>' +
+      '<td style="padding:8px;">' + (r.subject || '') + '</td>' +
+      '<td style="padding:8px;font-size:12px;color:#888;">' + (r.date || '') + '</td>' +
+      '<td style="padding:8px;font-size:12px;color:#888;">' + (r.folder || '') + '</td>';
+    tbody.appendChild(tr);
+  });
 }
 
 async function submit(s) {

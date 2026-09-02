@@ -33,6 +33,7 @@
 </head>
 <body>
 <script type="application/json" id="payload-data">{{PAYLOAD_JSON}}</script>
+<script type="text/plain" id="hitl-account-email" style="display:none">{{ACCOUNT_EMAIL}}</script>
 
 <header class="hitl-header">
   <div>
@@ -132,10 +133,12 @@ try {
   payload = {};
   ORIGINAL = {};
 }
-if (payload.account_id) {
+if (payload.account_id || document.getElementById('hitl-account-email').textContent) {
+  var email = document.getElementById('hitl-account-email').textContent;
+  var label = payload.account_id + (email ? ' — ' + email : '');
   document.getElementById('account-badge').innerHTML =
     '<span style="background:#0f3460;color:#e2e8f0;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;letter-spacing:0.5px">📧 ' +
-    payload.account_id + '</span>';
+    label + '</span>';
 }
 
 // Populate email fields from payload
