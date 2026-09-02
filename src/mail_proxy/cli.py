@@ -208,7 +208,7 @@ def _inject_uid_resolution(params: dict, action_name: str) -> None:
         uid = s.uid
         resolution[str(uid)] = {
             "subject": s.subject,
-            "from": s.from_addr,
+            "from": str(s.sender) if s.sender else "",
             "date": str(s.date),
             "folder": s.folder,
         }
