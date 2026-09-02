@@ -23,6 +23,29 @@ from ..config import (
 from ..exceptions import MailProxyError
 from .base import AccountScoped, ActionDef
 
+
+def _match_account(account_id: str, acc: object) -> bool:
+    """Check if *account_id* matches an account entry by id or alias.
+
+    The JSON account list stores a flat ``id`` and an optional ``aliases``
+    list.  Direct ``acc.id == account_id`` comparison ignores aliases and
+    causes inconsistencies with the ``MailClient`` / ``get_account()``
+    resolution path used by all other actions.
+
+    ``acc`` may be an ``AccountDef`` model or a plain dict depending on the
+    call site.
+
+    Examples:
+        >>> _match_account("x", {"id": "ivann.kamdem-pouokam", "aliases": ["x"]})
+        True
+        >>> _match_account("z", {"id": "poly", "aliases": ["poly"]})
+        False
+    """
+    if getattr(acc, "id", None) == account_id:
+        return True
+    return account_id in getattr(acc, "aliases", [])
+
+
 # ── Payloads ─────────────────────────────────────────────────────────────────
 
 
@@ -165,7 +188,7 @@ def _load_account_from_json(account_id: str | None) -> tuple[list, int]:
         raise MailProxyError("No accounts found in accounts.json.")
     target_idx: int | None = None
     for i, acc in enumerate(accounts):
-        if account_id and acc.id == account_id:
+        if account_id and _match_account(account_id, acc):
             target_idx = i
             break
         if not account_id and acc.default:
@@ -261,7 +284,7 @@ def signature_list(client: MailClient, p: SignatureListPayload) -> dict:
     accounts = load_accounts(force=True)
     target = None
     for acc in accounts:
-        if p.account_id and acc.id == p.account_id:
+        if p.account_id and _match_account(p.account_id, acc):
             target = acc
             break
         if not p.account_id and acc.default:
@@ -502,7 +525,7 @@ def signature_get(client: MailClient, p: SignatureGetPayload) -> dict:
     accounts = load_accounts(force=True)
     target = None
     for acc in accounts:
-        if p.account_id and acc.id == p.account_id:
+        if p.account_id and _match_account(p.account_id, acc):
             target = acc
             break
         if not p.account_id and acc.default:
