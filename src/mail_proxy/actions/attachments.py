@@ -15,8 +15,8 @@ class AttachmentDownloadPayload(AccountScoped):
     Attributes:
         uid (int): Message UID (from `message-info` → attachments list).
         filename (str): Exact attachment filename as listed.
-        save_path (str | None): Absolute destination path (default
-            /tmp/mail_attachments/<filename>).
+        save_path (str | None): Destination file or directory. Omit it to save
+            under ~/Downloads/Mail-Proxy/<account-id>/<filename>.
         folder (str): Folder the message lives in.
         ingest_base64 (bool): True → return `data_base64` instead of saving.
 
@@ -43,8 +43,9 @@ def attachment_download(client: MailClient, p: AttachmentDownloadPayload) -> dic
     Parameters:
         - uid (int): Message UID.
         - filename (str): Exact filename returned by `message-info`.
-        - save_path (str | None): Absolute path (default:
-          /tmp/mail_attachments/<filename>).
+        - save_path (str | None): Destination file or directory. A trailing
+          slash means directory; omit it for
+          ~/Downloads/Mail-Proxy/<account-id>/<filename>.
         - folder (str): Folder of the message (default INBOX).
         - ingest_base64 (bool): True → return `data_base64` instead of saving.
         - account_id (str | None): Account id (omit → default).
@@ -52,13 +53,13 @@ def attachment_download(client: MailClient, p: AttachmentDownloadPayload) -> dic
     Examples:
         - Save to the default directory:
             `mail-proxy do attachment-download '{"uid":42,"filename":"report.pdf"}'`
-            → {"saved_to":"/tmp/mail_attachments/report.pdf","filename":"report.pdf","size_bytes":2048,"account":"poly"}
+            → {"saved_to":"~/Downloads/Mail-Proxy/poly/report.pdf","filename":"report.pdf","size_bytes":2048,"account":"poly"}
         - Ingest as Base64:
             `mail-proxy do attachment-download '{"uid":42,"filename":"report.pdf","ingest_base64":true}'`
             → {"filename":"report.pdf","content_type":"application/pdf","size_bytes":2048,"data_base64":"JVBERi0xLjQK…","account":"poly"}
         - Save to an explicit path:
-            `mail-proxy do attachment-download '{"uid":42,"filename":"report.pdf","save_path":"/home/kpihx/Work/downloads/report.pdf"}'`
-            → {"saved_to":"/home/kpihx/Work/downloads/report.pdf","filename":"report.pdf","size_bytes":2048,"account":"poly"}
+            `mail-proxy do attachment-download '{"uid":42,"filename":"report.pdf","save_path":"~/Downloads/Mail-Proxy/"}'`
+            → {"saved_to":"~/Downloads/Mail-Proxy/report.pdf","filename":"report.pdf","size_bytes":2048,"account":"poly"}
     """
     imap = client.imap()
     data, content_type = imap.download_attachment(p.uid, p.filename, p.folder)
@@ -76,9 +77,19 @@ def attachment_download(client: MailClient, p: AttachmentDownloadPayload) -> dic
 
     if not data:
         raise ValueError(f"Attachment {p.filename!r} data is empty (File save mode).")
-    dest = (
-        Path(p.save_path) if p.save_path else Path("/tmp/mail_attachments") / p.filename
-    )
+    filename = Path(p.filename).name
+    if filename in ("", "."):
+        raise ValueError("Attachment filename must name a file.")
+    if p.save_path:
+        raw_path = p.save_path
+        destination = Path(raw_path).expanduser()
+        dest = (
+            destination / filename
+            if raw_path.endswith("/") or destination.is_dir()
+            else destination
+        )
+    else:
+        dest = Path.home() / "Downloads" / "Mail-Proxy" / client.account.id / filename
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
     return {

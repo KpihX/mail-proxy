@@ -197,7 +197,7 @@ Naming convention (inherited from `tg-proxy`/`tick-proxy`):
 
 | Action | Source tool | HITL | Notes |
 |--------|-------------|:----:|-------|
-| `attachment-download` | `download_attachment` | ❌ | save to file **or** `ingest_base64:true` |
+| `attachment-download` | `download_attachment` | ❌ | default `~/Downloads/Mail-Proxy/<account-id>/`; explicit file/directory path or `ingest_base64:true` |
 
 ### Labels (2)
 

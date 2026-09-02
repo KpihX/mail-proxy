@@ -143,6 +143,43 @@ def test_reply_subject_and_headers(monkeypatch):
     assert sent_msg["References"] == "<ref0@host> <orig@host>"
 
 
+def test_reply_subject_override_replaces_auto_re_prefix(monkeypatch):
+    """A reviewer-adjusted subject in the HITL fully replaces the auto 'Re: '
+    prefix — this is the fix for the reply/forward HITL form previously
+    showing an empty, non-functional subject field."""
+    original = Message(
+        uid=1,
+        message_id="<orig@host>",
+        subject="TP",
+        sender=Address(email="x@y.fr"),
+        recipients=[Address(email="me@test.fr")],
+    )
+    fake = _fake_connect(monkeypatch, _FakeSMTP())
+    client = SMTPClient(ACCOUNT)
+    client.reply(original=original, body_text="ok", subject_override="Custom subject")
+    _, _, raw = fake.sent[0]
+    sent_msg = message_from_bytes(raw)
+    assert sent_msg["Subject"] == "Custom subject"
+
+
+def test_reply_without_subject_override_keeps_auto_prefix(monkeypatch):
+    """No explicit override falls back to the original 'Re: ' computation —
+    subject_override=None must never change existing behavior."""
+    original = Message(
+        uid=1,
+        message_id="<orig@host>",
+        subject="TP",
+        sender=Address(email="x@y.fr"),
+        recipients=[Address(email="me@test.fr")],
+    )
+    fake = _fake_connect(monkeypatch, _FakeSMTP())
+    client = SMTPClient(ACCOUNT)
+    client.reply(original=original, body_text="ok", subject_override=None)
+    _, _, raw = fake.sent[0]
+    sent_msg = message_from_bytes(raw)
+    assert sent_msg["Subject"] == "Re: TP"
+
+
 def test_reply_all_recipient_logic(monkeypatch):
     original = Message(
         uid=1,
@@ -177,6 +214,20 @@ def test_forward_subject_prefix(monkeypatch):
     sent_msg = message_from_bytes(raw)
     assert sent_msg["Subject"] == "Fwd: Hello"
     assert "---------- Forwarded message ----------" in sent_msg.get_payload()[0].get_payload(decode=True).decode("utf-8")
+
+
+def test_forward_subject_override_replaces_auto_fwd_prefix(monkeypatch):
+    """A reviewer-adjusted forward subject fully replaces the auto 'Fwd: '."""
+    original = Message(
+        uid=1, message_id="<o@h>", subject="Hello", body_text="body",
+        sender=Address(email="x@y.fr"), date=None,
+    )
+    fake = _fake_connect(monkeypatch, _FakeSMTP())
+    client = SMTPClient(ACCOUNT)
+    client.forward(original=original, to=["z@w.fr"], subject_override="My forward")
+    _, _, raw = fake.sent[0]
+    sent_msg = message_from_bytes(raw)
+    assert sent_msg["Subject"] == "My forward"
 
 
 def test_draft_bytes_are_rfc822():

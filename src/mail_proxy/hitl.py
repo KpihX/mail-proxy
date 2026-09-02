@@ -178,7 +178,12 @@ class HITLServer(BaseHTTPRequestHandler):
             >>> # returns an explicit error page when the template file is missing
         """
         try:
-            payload_display = json.dumps(req["payload"], indent=2, default=str)
+            payload_display = (
+                json.dumps(req["payload"], indent=2, default=str)
+                .replace("<", "\\u003c")
+                .replace(">", "\\u003e")
+                .replace("&", "\\u0026")
+            )
             payload_safe = (
                 json.dumps(req["payload"], default=str)
                 .replace("\\", "\\\\")
@@ -246,6 +251,62 @@ class HITLServer(BaseHTTPRequestHandler):
             ):
                 pass
         html = html.replace("{{RESOLVED_SIG_HTML}}", resolved_sig)
+
+        # Reply/forward review must show what is being answered/forwarded
+        # (sender, subject, date) and a proper adjustable default subject —
+        # both are missing from the payload itself (subject is computed
+        # AFTER approval), reusing the SAME centralized UID resolution the
+        # move/archive/trash/spam/delete actions already rely on
+        # (`_inject_uid_resolution` in cli.py, keyed by `_uid_resolution`).
+        original_msg_json = "{}"
+        default_subject = ""
+        action_name = req.get("func_name", "")
+        payload_dict = req.get("payload")
+        if (
+            isinstance(payload_dict, dict)
+            and action_name in ("message-reply", "message-forward")
+            and isinstance(payload_dict.get("_uid_resolution"), dict)
+            and payload_dict["_uid_resolution"]
+        ):
+            info = next(iter(payload_dict["_uid_resolution"].values()))
+            orig_subject = info.get("subject", "") or ""
+            orig_from = info.get("from", "") or ""
+            orig_date = info.get("date", "") or ""
+            orig_folder = info.get("folder", "") or ""
+            verb = "↩ Replying to" if action_name == "message-reply" else "➡ Forwarding"
+            original_msg_json = (
+                json.dumps(
+                    {
+                        "verb": verb,
+                        "from": orig_from,
+                        "subject": orig_subject,
+                        "date": orig_date,
+                        "folder": orig_folder,
+                    }
+                )
+                .replace("<", "\\u003c")
+                .replace(">", "\\u003e")
+                .replace("&", "\\u0026")
+            )
+            lowered = orig_subject.lower()
+            if action_name == "message-reply":
+                default_subject = (
+                    orig_subject if lowered.startswith("re:") else f"Re: {orig_subject}"
+                )
+            else:
+                default_subject = (
+                    orig_subject
+                    if lowered.startswith(("fwd:", "fw:"))
+                    else f"Fwd: {orig_subject}"
+                )
+        default_subject_json = (
+            json.dumps(default_subject)
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("&", "\\u0026")
+        )
+        html = html.replace("{{ORIGINAL_MSG_JSON}}", original_msg_json)
+        html = html.replace("{{DEFAULT_SUBJECT_JSON}}", default_subject_json)
         return html
 
 

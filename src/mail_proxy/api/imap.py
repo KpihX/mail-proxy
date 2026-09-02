@@ -152,6 +152,11 @@ def _decode_header(raw: str | bytes | None) -> str:
     return " ".join(decoded)
 
 
+def _bodystructure_has_attachment(bodystructure: object) -> bool:
+    """Return whether an IMAP BODYSTRUCTURE declares an attachment part."""
+    return bool(bodystructure and "attachment" in str(bodystructure).lower())
+
+
 def _parse_address_list(raw: str | None) -> list[Address]:
     """Parse a raw RFC 2822 address list ("Name <email>", "a@b.fr", …).
 
@@ -871,9 +876,8 @@ class IMAPClient:
                 host = addr.host.decode() if addr.host else ""
                 sender = Address(name=name, email=f"{mailbox}@{host}")
             date = envelope.date if isinstance(envelope.date, datetime) else None
-            has_attachments = bool(
+            has_attachments = _bodystructure_has_attachment(
                 msg_data.get(b"BODYSTRUCTURE")
-                and "attachment" in str(msg_data[b"BODYSTRUCTURE"])
             )
 
             summaries.append(

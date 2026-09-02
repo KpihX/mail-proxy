@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.3.3 — 2026-09-03
+
+- **Fix:** `message-list` correctly detects uppercase IMAP `BODYSTRUCTURE`
+  attachment dispositions. The patch is released as a new local tool version so
+  `uv tool install --force` cannot reuse the prior 0.3.2 build cache.
+
+## 0.3.2 — 2026-09-03
+
+- **Correction:** the account-scoped attachment default belongs under
+  `~/Downloads/Mail-Proxy/<account-id>/`, never directly under `$HOME`.
+- **Correction:** `message-list` now recognizes uppercase IMAP
+  `BODYSTRUCTURE` `ATTACHMENT` dispositions.
+
+## 0.3.1 — 2026-09-03
+
+- **Attachment downloads are account-scoped by default:** omitting `save_path`
+  now writes to `~/Mail-Proxy/<account-id>/<filename>` and creates that directory
+  on demand. A trailing-slash `save_path` is an explicit destination directory;
+  an explicit file path still supports deliberate renaming. Added three regression
+  tests for default, directory, and file destinations.
+
+## 0.3.0 — 2026-09-02
+
+- **Reply/forward HITL now shows the original message and an adjustable
+  default subject** — the previous form left "To" and "Subject" blank with
+  no indication of what they would become, because `message-reply`/
+  `message-forward` compute both fields AFTER approval and never carry
+  them in their own payload. Fixed by hooking into the SAME centralized
+  UID resolution `cli.py::_inject_uid_resolution` already uses for
+  move/archive/trash/spam/delete/mark: `hitl.py::_render()` now reads the
+  existing `_uid_resolution` entry to render a "↩ Replying to" / "➡
+  Forwarding" card (sender, subject, date, folder) and computes a proper
+  default subject ("Re: "/"Fwd: ", never double-prefixed).
+- **New `subject_override` field on `MessageReplyPayload` and
+  `MessageForwardPayload`** — the reviewer's edit to the (now pre-filled)
+  Subject field is no longer silently dropped by Pydantic (subject isn't a
+  real field on these payloads); it round-trips through
+  `subject_override` and replaces the auto Re:/Fwd: computation end-to-end,
+  including the Sent-copy save. `SMTPClient.reply()`/`.forward()` accept
+  the same parameter.
+- 12 new regression tests (SMTP subject_override behavior + HITL rendering
+  for reply/forward/send). 201 tests green.
+
 ## 0.2.9 — 2026-09-02
 
 - **SMTP bare line-feed fix:** Outlook/Hotmail deliveries to strict servers

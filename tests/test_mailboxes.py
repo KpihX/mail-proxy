@@ -65,3 +65,21 @@ def test_sent_folder_resolves_special_use_attribute(monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(client, "_c", lambda: folder_client)
 
     assert client.sent_folder() == "Messages envoyés"
+
+
+def test_fetch_summaries_recognizes_uppercase_attachment_disposition(
+):
+    """IMAP BODYSTRUCTURE atoms are commonly uppercase, including ATTACHMENT."""
+    bodystructure = (
+        b"IMAGE",
+        b"PNG",
+        None,
+        None,
+        None,
+        b"BASE64",
+        4281,
+        None,
+        (b"ATTACHMENT", None),
+    )
+
+    assert imap_api._bodystructure_has_attachment(bodystructure) is True

@@ -439,6 +439,7 @@ class SMTPClient:
         reply_all: bool = False,
         bcc: list[str] | None = None,
         signature: str = "default",
+        subject_override: str | None = None,
     ) -> str:
         """Reply to an existing message (proper Re:/In-Reply-To/References).
 
@@ -449,6 +450,8 @@ class SMTPClient:
             reply_all (bool): Include all original recipients in CC.
             bcc (list[str] | None): Blind copies — SMTP envelope only.
             signature (str): "default" | "" | custom text.
+            subject_override (str | None): Exact subject to use instead of
+                the auto-computed "Re: <original>".
 
         Returns:
             str: The Message-ID of the reply.
@@ -460,9 +463,12 @@ class SMTPClient:
             >>> SMTPClient(account).reply(original, "Thanks")
             '<a1b2c3d4@webmail.polytechnique.fr>'
         """
-        subject = original.subject
-        if not subject.lower().startswith("re:"):
-            subject = f"Re: {subject}"
+        if subject_override:
+            subject = subject_override
+        else:
+            subject = original.subject
+            if not subject.lower().startswith("re:"):
+                subject = f"Re: {subject}"
 
         to_list = [original.sender.email] if original.sender else []
         cc_list: list[str] = []
@@ -509,6 +515,7 @@ class SMTPClient:
         cc: list[str] | None = None,
         bcc: list[str] | None = None,
         signature: str = "default",
+        subject_override: str | None = None,
     ) -> str:
         """Forward a message (Fwd: prefix + quoted original).
 
@@ -519,6 +526,8 @@ class SMTPClient:
             cc (list[str] | None): Visible carbon copies.
             bcc (list[str] | None): Blind copies — SMTP envelope only.
             signature (str): "default" | "" | custom text.
+            subject_override (str | None): Exact subject to use instead of
+                the auto-computed "Fwd: <original>".
 
         Returns:
             str: The Message-ID of the forward.
@@ -530,11 +539,14 @@ class SMTPClient:
             >>> SMTPClient(account).forward(original, ["c@d.fr"], "FYI")
             '<a1b2c3d4@webmail.polytechnique.fr>'
         """
-        subject = original.subject
-        if not subject.lower().startswith("fwd:") and not subject.lower().startswith(
-            "fw:"
-        ):
-            subject = f"Fwd: {subject}"
+        if subject_override:
+            subject = subject_override
+        else:
+            subject = original.subject
+            if not subject.lower().startswith(
+                "fwd:"
+            ) and not subject.lower().startswith("fw:"):
+                subject = f"Fwd: {subject}"
 
         sender_str = original.sender.email if original.sender else "unknown"
         date_str = original.date.strftime("%Y-%m-%d %H:%M") if original.date else ""

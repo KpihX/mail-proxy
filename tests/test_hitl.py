@@ -204,3 +204,121 @@ def test_hitl_signature_custom_text_renders_as_is(monkeypatch):
     assert "Using default" not in html
     _submit(box["url"], "rejected")
     worker.join(timeout=5)
+
+
+# ---------------------------------------------------------------------------
+# Reply/forward: original-message visibility + adjustable default subject
+#
+# message-reply / message-forward payloads never carry `subject` (it is
+# computed AFTER approval) or `to` (for reply). Previously the HITL showed
+# an empty, non-functional subject field and NO information about the
+# message being answered — the reviewer had no way to know what they were
+# approving. This reuses the SAME `_uid_resolution` dict that `cli.py`'s
+# `_inject_uid_resolution` already injects for move/archive/trash/spam
+# (that injection happens in `_execute`, upstream of `request_approval`,
+# so these tests build the resolution dict inline exactly as it would land
+# in the payload).
+# ---------------------------------------------------------------------------
+
+
+def test_hitl_reply_shows_original_message_and_default_subject(monkeypatch):
+    worker, box = _start_approval(monkeypatch, "message-reply", {
+        "uid": 42, "body_text": "Merci !",
+        "_uid_resolution": {
+            "42": {
+                "subject": "Question sur le TP",
+                "from": "prof@school.fr",
+                "date": "2026-01-01T10:00:00",
+                "folder": "INBOX",
+            }
+        },
+    })
+    html = _fetch_review_html(box["url"])
+    assert "prof@school.fr" in html
+    assert "Question sur le TP" in html
+    assert "Replying to" in html
+    assert "Re: Question sur le TP" in html
+    _submit(box["url"], "rejected")
+    worker.join(timeout=5)
+
+
+def test_hitl_reply_default_subject_avoids_double_re_prefix(monkeypatch):
+    worker, box = _start_approval(monkeypatch, "message-reply", {
+        "uid": 42, "body_text": "Merci !",
+        "_uid_resolution": {
+            "42": {"subject": "Re: Already prefixed", "from": "a@b.fr",
+                   "date": "2026-01-01T10:00:00", "folder": "INBOX"}
+        },
+    })
+    html = _fetch_review_html(box["url"])
+    assert "Re: Re: Already prefixed" not in html
+    assert "Re: Already prefixed" in html
+    _submit(box["url"], "rejected")
+    worker.join(timeout=5)
+
+
+def test_hitl_reply_escapes_original_message_metadata(monkeypatch):
+    """Original-message metadata cannot break out of the review page's JSON data."""
+    attacker_input = '</script><img src=x onerror="alert(1)">'
+    worker, box = _start_approval(monkeypatch, "message-reply", {
+        "uid": 42,
+        "body_text": "Thanks",
+        "_uid_resolution": {
+            "42": {
+                "subject": attacker_input,
+                "from": attacker_input,
+                "date": "2026-01-01T10:00:00",
+                "folder": "INBOX",
+            }
+        },
+    })
+    html = _fetch_review_html(box["url"])
+    assert "\\u003c/script\\u003e" in html
+    assert attacker_input not in html
+    _submit(box["url"], "rejected")
+    worker.join(timeout=5)
+
+
+def test_hitl_forward_shows_original_message_and_default_subject(monkeypatch):
+    worker, box = _start_approval(monkeypatch, "message-forward", {
+        "uid": 7, "to": ["c@d.fr"],
+        "_uid_resolution": {
+            "7": {"subject": "Rapport mensuel", "from": "boss@corp.fr",
+                  "date": "2026-02-02T09:00:00", "folder": "Archive"}
+        },
+    })
+    html = _fetch_review_html(box["url"])
+    assert "boss@corp.fr" in html
+    assert "Rapport mensuel" in html
+    assert "Forwarding" in html
+    assert "Fwd: Rapport mensuel" in html
+    _submit(box["url"], "rejected")
+    worker.join(timeout=5)
+
+
+def test_hitl_forward_default_subject_avoids_double_fwd_prefix(monkeypatch):
+    worker, box = _start_approval(monkeypatch, "message-forward", {
+        "uid": 7, "to": ["c@d.fr"],
+        "_uid_resolution": {
+            "7": {"subject": "Fwd: Already prefixed", "from": "a@b.fr",
+                  "date": "2026-02-02T09:00:00", "folder": "INBOX"}
+        },
+    })
+    html = _fetch_review_html(box["url"])
+    assert "Fwd: Fwd: Already prefixed" not in html
+    assert "Fwd: Already prefixed" in html
+    _submit(box["url"], "rejected")
+    worker.join(timeout=5)
+
+
+def test_hitl_send_action_shows_no_original_message_card(monkeypatch):
+    """message-send has no uid/original message — the reply/forward-only
+    card and default-subject logic must not activate for it."""
+    worker, box = _start_approval(monkeypatch, "message-send", {
+        "to": ["a@b.fr"], "subject": "Hi", "body_text": "body",
+    })
+    html = _fetch_review_html(box["url"])
+    assert "Replying to" not in html
+    assert "Forwarding" not in html
+    _submit(box["url"], "rejected")
+    worker.join(timeout=5)

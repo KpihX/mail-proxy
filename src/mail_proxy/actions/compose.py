@@ -91,6 +91,10 @@ class MessageReplyPayload(ComposeBase):
     reply_all: bool = Field(False, description="Reply to all original recipients")
     bcc: list[str] | None = Field(None, description="Blind copies (envelope only)")
     folder: str = Field("INBOX", description="Folder of the original message")
+    subject_override: str | None = Field(
+        None,
+        description="Replace the auto 'Re: <original>' subject with this exact text",
+    )
 
 
 class MessageForwardPayload(ComposeBase):
@@ -115,6 +119,10 @@ class MessageForwardPayload(ComposeBase):
     cc: list[str] | None = Field(None, description="Visible carbon copies")
     bcc: list[str] | None = Field(None, description="Blind copies (envelope only)")
     folder: str = Field("INBOX", description="Folder of the original message")
+    subject_override: str | None = Field(
+        None,
+        description="Replace the auto 'Fwd: <original>' subject with this exact text",
+    )
 
 
 class MessageDraftPayload(AccountScoped):
@@ -420,13 +428,17 @@ def message_reply(client: MailClient, p: MessageReplyPayload) -> dict:
         reply_all=p.reply_all,
         bcc=p.bcc,
         signature=p.signature,
+        subject_override=p.subject_override,
     )
     saved_to_sent = False
     sent_folder = ""
     try:
-        subject = original.subject
-        if not subject.lower().startswith("re:"):
-            subject = f"Re: {subject}"
+        if p.subject_override:
+            subject = p.subject_override
+        else:
+            subject = original.subject
+            if not subject.lower().startswith("re:"):
+                subject = f"Re: {subject}"
         to_copy = [original.sender.email] if original.sender else []
         cc_copy: list[str] = []
         if p.reply_all:
@@ -503,10 +515,19 @@ def message_forward(client: MailClient, p: MessageForwardPayload) -> dict:
         cc=p.cc,
         bcc=p.bcc,
         signature=p.signature,
+        subject_override=p.subject_override,
     )
     saved_to_sent = False
     sent_folder = ""
     try:
+        if p.subject_override:
+            fwd_subject = p.subject_override
+        else:
+            fwd_subject = original.subject
+            if not fwd_subject.lower().startswith(
+                "fwd:"
+            ) and not fwd_subject.lower().startswith("fw:"):
+                fwd_subject = f"Fwd: {fwd_subject}"
         full_body = (
             p.body_text
             + "\n\n---------- Forwarded message ----------\n"
@@ -518,7 +539,7 @@ def message_forward(client: MailClient, p: MessageForwardPayload) -> dict:
         saved_to_sent, sent_folder = _save_copy_to_sent(
             client,
             to=p.to,
-            subject=f"Fwd: {original.subject}",
+            subject=fwd_subject,
             body_text=full_body,
             cc=p.cc,
             bcc=p.bcc,

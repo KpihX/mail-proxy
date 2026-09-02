@@ -35,6 +35,8 @@
 <script type="application/json" id="payload-data">{{PAYLOAD_JSON}}</script>
 <script type="text/plain" id="hitl-account-email" style="display:none">{{ACCOUNT_EMAIL}}</script>
 <script type="text/plain" id="hitl-resolved-sig" style="display:none">{{RESOLVED_SIG_HTML}}</script>
+<script type="application/json" id="hitl-original-msg" style="display:none">{{ORIGINAL_MSG_JSON}}</script>
+<script type="application/json" id="hitl-default-subject" style="display:none">{{DEFAULT_SUBJECT_JSON}}</script>
 
 <header class="hitl-header">
   <div>
@@ -49,12 +51,15 @@
 </header>
 
 <main class="hitl-container">
+  <!-- Original message being replied to / forwarded -->
+  <div id="original-msg-card"></div>
+
   <!-- Email fields -->
   <section class="hitl-card">
     <h2>📧 Email Fields <span class="field-label">editable</span></h2>
     <div class="hitl-card-body">
       <div class="email-field">
-        <label>To</label>
+        <label>To <span id="to-hint" style="text-transform:none;font-weight:400;opacity:.6"></span></label>
         <input type="text" id="field-to" placeholder="recipient@example.com">
       </div>
       <div class="email-field">
@@ -66,7 +71,7 @@
         <input type="text" id="field-bcc" placeholder="bcc@example.com (optional)">
       </div>
       <div class="email-field">
-        <label>Subject</label>
+        <label>Subject <span id="subject-hint" style="text-transform:none;font-weight:400;opacity:.6"></span></label>
         <input type="text" id="field-subject" placeholder="Subject line">
       </div>
     </div>
@@ -142,12 +147,37 @@ if (payload.account_id || document.getElementById('hitl-account-email').textCont
     label + '</span>';
 }
 
+// reply/forward never carry `subject` in their own payload (it is computed
+// server-side AFTER approval) — track this once, from the ORIGINAL payload,
+// so an edited value round-trips as `subject_override` instead of being
+// silently dropped by Pydantic on an unknown `subject` key.
+var usesSubjectOverride = !('subject' in payload);
+var originalMsg = JSON.parse(document.getElementById('hitl-original-msg').textContent || '{}');
+var defaultSubject = JSON.parse(document.getElementById('hitl-default-subject').textContent || '""');
+if (originalMsg.verb) {
+  var originalCard = document.getElementById('original-msg-card');
+  var originalDetails = document.createElement('div');
+  originalDetails.style.cssText = 'background:#0f3460;border-radius:8px;padding:12px 16px;margin-bottom:14px;color:#e2e8f0;font-size:13px;line-height:1.6;';
+  originalDetails.textContent = originalMsg.verb + ': ' + originalMsg.from + '\nSubject: ' + originalMsg.subject + '\nDate: ' + originalMsg.date + ' · Folder: ' + originalMsg.folder;
+  originalDetails.style.whiteSpace = 'pre-line';
+  originalCard.appendChild(originalDetails);
+}
+
 // Populate email fields from payload
 function populateFields() {
   document.getElementById('field-to').value = listToStr(payload.to);
   document.getElementById('field-cc').value = listToStr(payload.cc);
   document.getElementById('field-bcc').value = listToStr(payload.bcc);
-  document.getElementById('field-subject').value = payload.subject || '';
+  var subjectValue = usesSubjectOverride
+    ? (payload.subject_override || defaultSubject || '')
+    : (payload.subject || '');
+  document.getElementById('field-subject').value = subjectValue;
+  if (usesSubjectOverride) {
+    document.getElementById('subject-hint').textContent = '(auto "Re:/Fwd:" — adjustable)';
+  }
+  if (!('to' in payload)) {
+    document.getElementById('to-hint').textContent = '(auto-resolved from sender/reply-all)';
+  }
   document.getElementById('field-body').value = payload.body_text || '';
   document.getElementById('field-html').value = payload.body_html || '';
   renderHtmlPreview();
@@ -203,7 +233,13 @@ function gatherPayload() {
   var bcc = strToList(document.getElementById('field-bcc').value);
   p.bcc = bcc;
   var subj = document.getElementById('field-subject').value.trim();
-  if (subj) p.subject = subj;
+  if (subj) {
+    if (usesSubjectOverride) {
+      p.subject_override = subj;
+    } else {
+      p.subject = subj;
+    }
+  }
   var body = document.getElementById('field-body').value;
   p.body_text = body;
   var html = document.getElementById('field-html').value;
@@ -231,7 +267,11 @@ document.getElementById('field-bcc').addEventListener('input', function() {
   payload.bcc = strToList(this.value);
 });
 document.getElementById('field-subject').addEventListener('input', function() {
-  payload.subject = this.value;
+  if (usesSubjectOverride) {
+    payload.subject_override = this.value;
+  } else {
+    payload.subject = this.value;
+  }
 });
 document.getElementById('field-body').addEventListener('input', function() {
   payload.body_text = this.value;

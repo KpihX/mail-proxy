@@ -35,6 +35,7 @@ mail-proxy admin setup|status|reset|purge                        # ALWAYS JSON
 | `src/mail_proxy/api/` | Low-level mail layer: `imap.py`, `smtp.py`, `models.py` (domain models) |
 | `src/mail_proxy/actions/` | The 24 actions: `ActionDef` + colocated Pydantic payload + handler |
 | `src/mail_proxy/actions/registry.py` | `name → ActionDef` map; duplicates raise at import |
+| `src/mail_proxy/actions/attachments.py` | Attachment download: default `~/Downloads/Mail-Proxy/<account-id>/`, explicit file or trailing-slash directory |
 | `src/mail_proxy/admin.py` | Single source of truth for admin logic (setup, status, reset, purge) |
 | `CONTRACT.md` | Architecture contract + full 24-action catalog |
 

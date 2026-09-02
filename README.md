@@ -313,6 +313,10 @@ mail-proxy do message-send --help    # full docstring + exact payload schema
 mail-proxy do inbox-check
 mail-proxy do message-list '{"folder":"Archive","limit":5}'
 mail-proxy do message-search ./filter.json
+mail-proxy do attachment-download '{"uid":42,"filename":"diagram.png"}'
+# → ~/Downloads/Mail-Proxy/<account-id>/diagram.png (created automatically)
+mail-proxy do attachment-download '{"uid":42,"filename":"diagram.png","save_path":"~/Downloads/Mail-Proxy/"}'
+# → ~/Downloads/Mail-Proxy/diagram.png
 
 # Compose actions always open the HITL review page before sending
 mail-proxy do message-send '{"to":["x@y.fr"],"subject":"Rendez-vous","body_text":"Dispo demain ?"}'
@@ -329,6 +333,10 @@ mail-proxy do message-search ./f.json -o /tmp/result.json
 | `--output-file <path>` / `-o` | Write the full envelope to a file |
 | `--format json\|table` / `-f` | Display format (default: `json`) |
 | `--help` / `-h` | Full docstring + payload schema |
+
+Attachment downloads default to `~/Downloads/Mail-Proxy/<account-id>/<filename>` and create
+the account directory as needed. `save_path` accepts either an explicit file path or a directory
+path ending in `/`; a directory retains the attachment filename.
 
 ---
 
