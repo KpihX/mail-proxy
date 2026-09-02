@@ -760,6 +760,47 @@ class IMAPClient:
         return uids[: criteria.limit]
 
     @_guard_imap
+    def search_thread(self, message_id: str, folder: str, limit: int) -> list[int]:
+        """Return UIDs of every message tied to `message_id` in `folder`.
+
+        Matches the message that OWNS `message_id`, and every message that
+        REFERENCES it (a reply chain records the ancestor's ID in both its
+        own ``Message-ID`` chain via ``References``, and directly via
+        ``In-Reply-To``). Searching all three headers is required because a
+        thread search must find the target message itself, not only replies
+        to it.
+
+        A Message-ID is a bracket-delimited token (RFC 5322 `msg-id`) — pure
+        ASCII by construction, so this always uses imapclient's normal
+        nested-OR path (never the non-ASCII split used by `search()`).
+
+        Args:
+            message_id (str): Exact `Message-ID` header value, with angle
+                brackets (e.g. ``<abc@host>``).
+            folder (str): Folder to search.
+            limit (int): Maximum UIDs returned.
+
+        Returns:
+            list[int]: Matching UIDs, newest first.
+
+        Examples:
+            >>> IMAPClient(account).search_thread("<abc@host>", "INBOX", 50)
+            [312, 300]
+        """
+        self._select_folder(folder, readonly=True)
+        criteria: list[object] = [
+            "OR",
+            ["HEADER", "Message-ID", message_id],
+            [
+                "OR",
+                ["HEADER", "In-Reply-To", message_id],
+                ["HEADER", "References", message_id],
+            ],
+        ]
+        uids = sorted(self._run_search(criteria), reverse=True)
+        return uids[:limit]
+
+    @_guard_imap
     def message_exists(self, uid: int, folder: str) -> bool:
         """Whether a UID currently exists in a folder.
 

@@ -432,5 +432,70 @@ def test_ascii_capable_server_never_uses_client_side_fallback(
         raise AssertionError("client-side fallback must not run on a capable server")
 
     monkeypatch.setattr(client, "fetch_bodies_for_pattern", _forbidden)
-
     assert client.search(SearchCriteria(subject_filter="fête", limit=10)) == [42]
+
+
+# ---------------------------------------------------------------------------
+# search_thread — HEADER search, not SUBJECT/BODY
+#
+# `message-thread` previously used `query=` (SUBJECT/BODY substring search)
+# with the Message-ID as the term. A Message-ID never appears in subject or
+# body text — only in the `Message-ID`/`In-Reply-To`/`References` headers —
+# so it always returned zero results, even for the folder containing the
+# owning message itself. Verified live: empty on Zimbra Sent for a message
+# that literally carries that Message-ID.
+# ---------------------------------------------------------------------------
+
+_MSG_ID = "<abc@webmail.polytechnique.fr>"
+
+
+def test_search_thread_uses_header_criteria_not_query(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """The wire criteria search HEADER fields — never SUBJECT/BODY."""
+    fake = _RecordingClient([300])
+    client = IMAPClient(_account())
+    monkeypatch.setattr(client, "_c", lambda: fake)
+
+    client.search_thread(_MSG_ID, "INBOX", 50)
+
+    criteria, charset = fake.search_calls[0]
+    assert charset == "UTF-8"
+    assert criteria == [
+        "OR",
+        ["HEADER", "Message-ID", _MSG_ID],
+        ["OR", ["HEADER", "In-Reply-To", _MSG_ID], ["HEADER", "References", _MSG_ID]],
+    ]
+    assert not any(item in ("SUBJECT", "BODY") for item in criteria)
+
+
+def test_search_thread_finds_the_owning_message_itself(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """A folder holding only the message that OWNS the Message-ID must match
+    (this is the exact live bug: Sent held UID 11159 whose own Message-ID
+    was the search target, and the old `query=` search returned nothing).
+    """
+
+    class OwningMessageServer(_CharsetRejectingClient):
+        def search(
+            self, criteria: list[object], charset: str | None = None
+        ) -> list[int]:
+            self.search_calls.append((criteria, charset))
+            # Only the outer "Message-ID" branch matches — no replies exist.
+            return [11159] if criteria[1] == ["HEADER", "Message-ID", _MSG_ID] else []
+
+    fake = OwningMessageServer()
+    client = IMAPClient(_account())
+    monkeypatch.setattr(client, "_c", lambda: fake)
+
+    assert client.search_thread(_MSG_ID, "Sent", 50) == [11159]
+
+
+def test_search_thread_respects_limit(monkeypatch: pytest.MonkeyPatch):
+    """The limit truncates the returned UID list."""
+    fake = _RecordingClient([5, 4, 3, 2, 1])
+    client = IMAPClient(_account())
+    monkeypatch.setattr(client, "_c", lambda: fake)
+
+    assert client.search_thread(_MSG_ID, "INBOX", 2) == [5, 4]

@@ -468,7 +468,8 @@ def message_thread(client: MailClient, p: MessageThreadPayload) -> list[dict]:
     """Retrieve all messages of a thread by Message-ID.
 
     Returns messages ordered oldest-first (conversation view). Searches the
-    folder for messages that reference the given Message-ID.
+    folder's `Message-ID`, `In-Reply-To`, and `References` headers — finding
+    both the owning message and every message that replies to it.
 
     Parameters:
         - message_id (str): Message-ID of the thread.
@@ -489,9 +490,7 @@ def message_thread(client: MailClient, p: MessageThreadPayload) -> list[dict]:
     """
     depth_limit = min(p.limit, 50)
     imap = client.imap()
-    uids = imap.search(
-        SearchCriteria(folder=p.folder, query=p.message_id, limit=depth_limit)
-    )
+    uids = imap.search_thread(p.message_id, p.folder, depth_limit)
     summaries = imap.fetch_summaries(uids, p.folder)
     return [
         {
