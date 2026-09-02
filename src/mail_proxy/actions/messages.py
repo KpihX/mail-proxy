@@ -28,9 +28,22 @@ from .base import (
     verify_absence,
 )
 
-_ARCHIVE_CANDIDATES = ["Archive", "Archives", "All Mail", "[Gmail]/All Mail"]
+_ARCHIVE_CANDIDATES = [
+    "Archive",
+    "Archives",
+    "All Mail",
+    "[Gmail]/All Mail",
+    "[Gmail]/Tous les messages",
+]
 _SPAM_CANDIDATES = ["Spam", "Junk", "Junk E-mail", "[Gmail]/Spam"]
-_TRASH_CANDIDATES = ["Trash", "Deleted Items", "Deleted Messages", "[Gmail]/Trash"]
+_TRASH_CANDIDATES = [
+    "Trash",
+    "Deleted Items",
+    "Deleted Messages",
+    "Deleted",
+    "[Gmail]/Trash",
+    "[Gmail]/Corbeille",
+]
 
 
 class MessageListPayload(AccountScoped):
@@ -613,12 +626,9 @@ def message_move(
 
     # Verification: the UIDs must be gone from the source and present in the destination.
     remaining = remaining_uids(client, p.uids, p.source_folder)
-    present_in_dest = [
-        uid for uid in p.uids if imap.message_exists(uid, p.destination_folder)
-    ]
-    moved_ok = not remaining and len(present_in_dest) == len(p.uids)
+    moved_ok = not remaining
     verification = compare(
-        f"UID SEARCH {p.source_folder}+{p.destination_folder}",
+        f"UID SEARCH {p.source_folder} absence",
         {"uids": p.uids, "destination_folder": p.destination_folder},
         {
             "uids": p.uids,
@@ -664,12 +674,9 @@ def _verified_simple_move(
     )
 
     remaining = remaining_uids(client, payload.uids, payload.source_folder)
-    present_in_target = [
-        uid for uid in payload.uids if imap.message_exists(uid, target_folder)
-    ]
-    ok = not remaining and len(present_in_target) == len(payload.uids)
+    ok = not remaining
     verification = compare(
-        f"UID SEARCH {method_label}",
+        f"UID SEARCH {method_label} absence",
         {"uids": payload.uids, "folder": target_folder},
         {"uids": payload.uids, "folder": target_folder if ok else None},
     )

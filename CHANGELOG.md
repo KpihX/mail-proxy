@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.6 — 2026-09-03
+
+- **Fix:** IMAP UIDs are strictly folder-scoped and change upon moving. `message-move`, `message-archive`, `message-trash`, and `message-spam` verifications now correctly verify absence from the source folder rather than incorrectly attempting to find the old UIDs in the destination folder.
+
+## 0.3.5 — 2026-09-03
+
+- **Fix:** Support localized folder names for Archive, Trash, and Spam moves (`Deleted`, `[Gmail]/Tous les messages`, `[Gmail]/Corbeille`).
+
+## 0.3.4 — 2026-09-03
+
+- **Reply attachments:** `message-reply` now accepts `attachments`, passes them
+  through SMTP, and includes them in the Sent-folder copy. Added MIME coverage.
+
 ## 0.3.3 — 2026-09-03
 
 - **Fix:** `message-list` correctly detects uppercase IMAP `BODYSTRUCTURE`
