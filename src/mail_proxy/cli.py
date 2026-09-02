@@ -404,6 +404,12 @@ def admin_auth_logout() -> None:
     _run_admin(admin.auth_logout)
 
 
+@app_admin_auth.command("default")
+def admin_auth_default() -> None:
+    """Set the default account used when -a is omitted."""
+    _run_admin(admin.auth_default)
+
+
 @app_admin.command("reset")
 def admin_reset() -> None:
     """Empty ALL passwords from .env (HITL-confirmed). Accounts in JSON untouched."""

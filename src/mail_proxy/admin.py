@@ -499,6 +499,82 @@ def auth_logout(account_id: str | None = None) -> AdminResult:
     )
 
 
+def auth_default() -> AdminResult:
+    """Set the default account used when -a is omitted.
+
+    The HITL form shows all accounts with their current default status.
+    The user picks one, and it becomes the default (all others lose it).
+
+    Returns:
+        tuple[dict, Status, bool, str]: A tuple containing the result
+        dict, the HITL response status, edited flag, and reviewer comment.
+
+    Examples:
+        - Set default to poly:
+            `mail-proxy admin auth default`
+            → {"account":"poly","default":true}
+        - Reviewer rejected:
+            `mail-proxy admin auth default`
+            → (rejected envelope, exit 1 — nothing changed)
+        - Account not found:
+            `mail-proxy admin auth default`
+            → (error, exit 1 — account does not exist)
+    """
+    load_env()
+    accounts = load_accounts(force=True)
+
+    # Build list for HITL form
+    candidates = []
+    for a in accounts:
+        candidates.append(
+            {
+                "id": a.id,
+                "email": a.email,
+                "is_default": a.default,
+            }
+        )
+
+    form: dict[str, Any] = {
+        "action": "auth_default",
+        "accounts": candidates,
+        "instructions": "Set 'account_id' to the account you want as default.",
+    }
+    response = request_approval("admin auth default", form)
+    if response.status == "rejected":
+        return None, "rejected", response.edited, response.comment
+
+    payload = response.payload if isinstance(response.payload, dict) else form
+    target_id = str(payload.get("account_id", "")).strip()
+
+    if not target_id:
+        raise MailProxyError("account_id is required.")
+
+    # Verify account exists
+    found = False
+    for a in accounts:
+        if a.id == target_id:
+            found = True
+            break
+    if not found:
+        raise MailProxyError(
+            f"Account {target_id!r} not found. Known: "
+            f"{', '.join(a.id for a in accounts)}."
+        )
+
+    # Set default — clear all others, set target
+    for a in accounts:
+        a.default = a.id == target_id
+
+    write_accounts_json(accounts)
+
+    return (
+        {"account": target_id, "default": True},
+        cast(Status, response.status),
+        response.edited,
+        response.comment,
+    )
+
+
 # ── probes ────────────────────────────────────────────────────────────────────
 
 
