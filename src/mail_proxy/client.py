@@ -116,7 +116,8 @@ class MailClient:
     def smtp(self) -> SMTPClient:
         """Return a stateless SMTP sender for the account.
 
-        For custom accounts, reuses the cached password from keyring.
+        For custom accounts, reuses the cached password from keyring. Prompts
+        on first use (or after TTL expiry) if not already cached.
 
         Returns:
             SMTPClient: Sends connect-per-call.
@@ -125,4 +126,8 @@ class MailClient:
             >>> MailClient().smtp().account.id
             'poly'
         """
+        if self._is_custom_password() and not self.account.password:
+            self._prompt_and_cache()
+            # _prompt_and_cache caches via an IMAP verification; if successful,
+            # self.account.password is now populated for SMTP use.
         return SMTPClient(self.account)

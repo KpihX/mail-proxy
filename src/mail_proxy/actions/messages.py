@@ -341,6 +341,7 @@ def message_info(client: MailClient, p: MessageInfoPayload) -> dict:
         "flags": msg.flags,
         "folder": msg.folder,
         "body_text": msg.body_text,
+        "body_html": msg.body_html,
         "attachments": [
             {
                 "filename": a.filename,

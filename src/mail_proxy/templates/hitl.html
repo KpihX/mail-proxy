@@ -13,6 +13,7 @@
   <div>
     <h1 class="hitl-brand">✉ Mail-Proxy · Review</h1>
     <p class="hitl-subtitle">{{FUNC_NAME}}</p>
+    <div id="account-badge"></div>
   </div>
   <div class="hitl-actions">
     <button class="hitl-button hitl-reject" onclick="submit('rejected')">✕ Reject</button>
@@ -43,6 +44,11 @@ try {
   ORIGINAL = {};
 }
 document.getElementById('payload').value = JSON.stringify(payload, null, 2);
+if (payload.account_id) {
+  document.getElementById('account-badge').innerHTML =
+    '<span style="background:#0f3460;color:#e2e8f0;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;letter-spacing:0.5px">📧 ' +
+    payload.account_id + '</span>';
+}
 
 async function submit(s) {
   var raw = document.getElementById('payload').value;

@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.2.9 — 2026-09-02
+
+- **SMTP bare line-feed fix:** Outlook/Hotmail deliveries to strict servers
+  (Zimbra `mx-b.polytechnique.fr`) were rejected with
+  `SMTPSEND.BareLinefeedsAreIllegal` because `MIMEMultipart.as_bytes()`
+  leaked bare `\n` into HTML bodies. Added `_normalize_crlf()` before every
+  `sendmail()` call — idempotent CRLF normalization that eliminates the
+  rejection while keeping all other providers (Gmail, Outlook) unaffected.
+  Verified live: 12-message cross-account matrix (Gmail↔Hotmail↔Zimbra,
+  text-only + HTML+Text) — all 12 delivered.
+- **SMTP custom-account prompt parity:** `MailClient.smtp()` now calls
+  `_prompt_and_cache()` for custom accounts with no cached password, matching
+  the existing `imap()` behavior. Previously, a Zimbra send after keyring
+  expiry silently sent an empty password (rejected by the server); now it
+  prompts interactively like every other IMAP operation.
+- **HITL account badge:** both review templates (`hitl.html` and
+  `message-review.html`) display the `account_id` prominently at the top,
+  so reviewers always know which account they are approving.
+- **HITL HTML body:** `message-review.html` now renders the `body_html`
+  field with a live preview. Previously, `body_html` was silently ignored
+  in the review UI and lost on approval when the reviewer cleared the
+  (invisible) field.
+- **`message-info` body_html exposed:** the action now returns `body_html`
+  in its JSON output — previously only `body_text` was serialized, hiding
+  the HTML part from CLI consumers.
+
 ## 0.2.8 — 2026-09-02
 
 - **Non-ASCII search now works on every provider (Gmail, Outlook, Zimbra).**

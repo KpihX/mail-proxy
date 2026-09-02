@@ -14,6 +14,7 @@
     }
     .email-field input:focus, .email-field textarea:focus { border-color: var(--accent); outline: none; }
     .email-field textarea.body-input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-height: 180px; resize: vertical; }
+    .email-field textarea.html-input { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; min-height: 100px; resize: vertical; }
     .sig-zone {
       border: 2px solid var(--accent); border-radius: 10px; padding: 14px;
       background: var(--surface-raised); margin: 14px 0;
@@ -37,6 +38,7 @@
   <div>
     <h1 class="hitl-brand">✉ Mail-Proxy · Compose Review</h1>
     <p class="hitl-subtitle">{{FUNC_NAME}}</p>
+    <div id="account-badge"></div>
   </div>
   <div class="hitl-actions">
     <button class="hitl-button hitl-reject" onclick="submit('rejected')">✕ Reject</button>
@@ -78,6 +80,21 @@
     </div>
   </section>
 
+  <!-- HTML Body -->
+  <section class="hitl-card" id="html-body-card">
+    <h2>🌐 HTML Body <span class="field-label">optional · editable</span></h2>
+    <div class="hitl-card-body">
+      <div class="email-field">
+        <label>HTML source</label>
+        <textarea class="body-input html-input" id="field-html" placeholder="&lt;p&gt;HTML body…&lt;/p&gt;"></textarea>
+      </div>
+      <div class="email-field">
+        <label>Preview</label>
+        <div id="html-preview" style="background:#fff;border:1px solid var(--border);border-radius:7px;padding:16px;min-height:80px;color:#1a1a2e;font-size:14px;"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- Signature zone -->
   <section class="sig-zone" id="sig-zone">
     <h3>✍ Signature</h3>
@@ -115,6 +132,11 @@ try {
   payload = {};
   ORIGINAL = {};
 }
+if (payload.account_id) {
+  document.getElementById('account-badge').innerHTML =
+    '<span style="background:#0f3460;color:#e2e8f0;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;letter-spacing:0.5px">📧 ' +
+    payload.account_id + '</span>';
+}
 
 // Populate email fields from payload
 function populateFields() {
@@ -123,6 +145,8 @@ function populateFields() {
   document.getElementById('field-bcc').value = listToStr(payload.bcc);
   document.getElementById('field-subject').value = payload.subject || '';
   document.getElementById('field-body').value = payload.body_text || '';
+  document.getElementById('field-html').value = payload.body_html || '';
+  renderHtmlPreview();
   renderSignature(payload.signature || 'default');
   renderAttachments(payload.attachments);
 }
@@ -182,6 +206,8 @@ function gatherPayload() {
   if (subj) p.subject = subj;
   var body = document.getElementById('field-body').value;
   p.body_text = body;
+  var html = document.getElementById('field-html').value;
+  p.body_html = html;
   return p;
 }
 
@@ -210,6 +236,20 @@ document.getElementById('field-subject').addEventListener('input', function() {
 document.getElementById('field-body').addEventListener('input', function() {
   payload.body_text = this.value;
 });
+document.getElementById('field-html').addEventListener('input', function() {
+  payload.body_html = this.value;
+  renderHtmlPreview();
+});
+
+function renderHtmlPreview() {
+  var el = document.getElementById('html-preview');
+  var html = document.getElementById('field-html').value;
+  if (!html || !html.trim()) {
+    el.innerHTML = '<em style="color:#888">No HTML body — plain text only</em>';
+  } else {
+    el.innerHTML = html;
+  }
+}
 
 populateFields();
 

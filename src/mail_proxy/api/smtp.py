@@ -358,6 +358,23 @@ class SMTPClient:
     # Public API
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _normalize_crlf(raw: bytes) -> bytes:
+        """Normalize line endings to SMTP-mandated CRLF (RFC 5321 §4.1.1).
+
+        Bare line feeds (``\\n`` without ``\\r``) are illegal in the SMTP
+        ``DATA`` command body.  Gmail silently accepts them; strict servers
+        like Zimbra reject them with ``SMTPSEND.BareLinefeedsAreIllegal``
+        when they do not support ``BDAT`` (chunked transfer).
+
+        ``MIMEMultipart.as_bytes()`` *should* emit CRLF, but HTML strings
+        constructed with Python ``\\n`` can leak bare LFs into the payload
+        when nested MIME parts are assembled.
+
+        The normalisation is idempotent: ``\\r\\n`` → ``\\n`` → ``\\r\\n``.
+        """
+        return raw.replace(b"\r\n", b"\n").replace(b"\n", b"\r\n")
+
     def send(
         self,
         to: list[str],
@@ -405,7 +422,11 @@ class SMTPClient:
         all_rcpt = to + (cc or []) + (bcc or [])
         try:
             with self._connect() as server:
-                server.sendmail(self.account.from_address, all_rcpt, msg.as_bytes())
+                server.sendmail(
+                    self.account.from_address,
+                    all_rcpt,
+                    self._normalize_crlf(msg.as_bytes()),
+                )
         except smtplib.SMTPException as exc:
             raise MailAPIError(0, f"SMTP submission failed: {exc}.") from exc
         return mid
@@ -471,7 +492,11 @@ class SMTPClient:
         all_rcpt = to_list + cc_list + (bcc or [])
         try:
             with self._connect() as server:
-                server.sendmail(self.account.from_address, all_rcpt, msg.as_bytes())
+                server.sendmail(
+                    self.account.from_address,
+                    all_rcpt,
+                    self._normalize_crlf(msg.as_bytes()),
+                )
         except smtplib.SMTPException as exc:
             raise MailAPIError(0, f"SMTP submission failed: {exc}.") from exc
         return mid
@@ -533,7 +558,11 @@ class SMTPClient:
         all_rcpt = to + (cc or []) + (bcc or [])
         try:
             with self._connect() as server:
-                server.sendmail(self.account.from_address, all_rcpt, msg.as_bytes())
+                server.sendmail(
+                    self.account.from_address,
+                    all_rcpt,
+                    self._normalize_crlf(msg.as_bytes()),
+                )
         except smtplib.SMTPException as exc:
             raise MailAPIError(0, f"SMTP submission failed: {exc}.") from exc
         return mid
