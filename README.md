@@ -287,6 +287,28 @@ new code.
 If the refresh token is expired or revoked, run `mail-proxy admin auth login` again to
 re-authorize.
 
+### Gmail Web shows a yellow star, but `message-mark` says unstarred
+
+Gmail maps its star to IMAP `\\Flagged`. `message-mark` verifies its write by reading back
+`UID FETCH FLAGS`; `message-search` with `flagged_only:true` independently checks Gmail with
+`SEARCH FLAGGED`. Both are normal `mail-proxy do` actions — no raw IMAP command is needed.
+
+On 2026-09-03, Gmail Web retained a yellow star in `[Gmail]/Spam` after repeated page refreshes
+while both checks reported the exact same message unstarred (`FLAGS: []`, absent from
+`SEARCH FLAGGED`). Another visually starred message in that folder correctly returned
+`\\Flagged`. This is a Gmail Web/IMAP state divergence, not a wrong account, UID, folder, or
+generic flags-parser result.
+
+When this happens:
+
+1. Do **not** repeat a flag mutation blindly.
+2. Use `message-info` for the target UID and `message-search` with `flagged_only:true` in the
+   same folder. If both agree, `message-mark` has verified the IMAP state correctly.
+3. Treat `data.verification.ok:true` as proof of **IMAP state only**, not proof that an already
+   loaded Gmail Web row has rendered the same state.
+4. If Gmail Web parity is required, a future provider-specific Gmail API path must read/write
+   the Gmail `STARRED` label explicitly; generic IMAP must not silently claim that guarantee.
+
 ---
 
 ## HITL
@@ -326,6 +348,26 @@ mail-proxy do message-send '{"to":["x@y.fr"],"subject":"Rendez-vous","body_text"
 mail-proxy do folder-list -f table            # table instead of JSON
 mail-proxy do message-search ./f.json -o /tmp/result.json
 ```
+
+### `raw`: complete protocol escape hatch
+
+`raw` is always browser-HITL-approved. It can express every normal action through one or more
+protocol primitives and more, but is not an unbounded code-execution surface:
+
+| Protocol | Coverage |
+|---|---|
+| `imap` (default) | Any IMAP command, including flags, folders, searches, copies, moves and extensions; isolated connection |
+| `smtp` | Any prebuilt RFC822/MIME message through the account SMTP transport |
+| `gmail-api` | Any Gmail REST endpoint, including canonical `STARRED` label operations; Google OAuth2 only |
+
+```bash
+mail-proxy do raw '{"protocol":"imap","method":"UID","args":["FETCH","42","(FLAGS)"],"select":"INBOX"}'
+mail-proxy do raw '{"protocol":"smtp","method":"send-rfc822","params":{"recipients":["a@b.fr"],"rfc822_base64":"..."}}'
+mail-proxy do raw '{"protocol":"gmail-api","method":"post","endpoint":"/users/me/messages/ID/modify","payload":{"addLabelIds":["STARRED"]}}'
+```
+
+Raw returns the provider response and carries no automatic verification. It never silently changes
+protocol, and never executes shell, filesystem, Python, or arbitrary runtime code.
 
 ### Meta options (`do` only)
 

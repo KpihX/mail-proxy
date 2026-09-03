@@ -210,12 +210,19 @@ Naming convention (inherited from `tg-proxy`/`tick-proxy`):
 
 | Action | Source tool | HITL | Notes |
 |--------|-------------|:----:|-------|
-| `raw` | *(new — `tick-proxy do raw` equivalent)* | ✅ | any IMAP command on a **dedicated** imaplib connection |
+| `raw` | *(new — multi-protocol escape hatch)* | ✅ | arbitrary `imap`, RFC822 `smtp`, or `gmail-api` operation |
+
+`raw` is **always HITL**. It is unlimited only inside its explicit selected protocol:
 
 ```bash
-mail-proxy do raw '{"command":"STATUS","args":["INBOX","(MESSAGES UNSEEN)"]}'
-mail-proxy do raw '{"command":"UID","args":["FETCH","312","(FLAGS)"],"select":"INBOX"}'
+mail-proxy do raw '{"protocol":"imap","method":"STATUS","args":["INBOX","(MESSAGES UNSEEN)"]}'
+mail-proxy do raw '{"protocol":"smtp","method":"send-rfc822","params":{"recipients":["a@b.fr"],"rfc822_base64":"..."}}'
+mail-proxy do raw '{"protocol":"gmail-api","method":"post","endpoint":"/users/me/messages/ID/modify","payload":{"addLabelIds":["STARRED"]}}'
 ```
+
+No silent protocol fallback exists. IMAP is the default; SMTP uses the configured account's
+authenticated transport; Gmail API requires a Google OAuth2 account with the `mail.google.com`
+scope. `raw` never exposes shell, filesystem, Python/runtime execution, or automatic verification.
 
 ### Action count
 
@@ -301,6 +308,33 @@ def message_move(client: MailClient, p: MessageMovePayload) -> tuple[dict, Verif
 | `label-set` | `uids`, `labels` | same all-UID semantics for keywords |
 | `message-delete` | `deleted` | absence poll until every UID is gone (see `verify_absence`) |
 | `folder-delete` | `deleted` | absence poll until the folder name disappears from LIST |
+
+### Gmail `\\Flagged` verification boundary
+
+For Gmail, a visual yellow star is specified to map to standard IMAP `\\Flagged`.
+`message-mark` therefore writes with `UID STORE` and verifies the resulting state with
+`UID FETCH FLAGS`; `message-search` with `flagged_only:true` independently uses
+`SEARCH FLAGGED`. These are independent **normal `do`-action** checks of Gmail's IMAP
+state — `raw` is neither needed nor appropriate for this validation.
+
+**Observed divergence (2026-09-03):** a message in `[Gmail]/Spam` retained a yellow star in
+Gmail Web after several manual refreshes, while both normal checks reported it unstarred:
+`FETCH FLAGS → []` and `SEARCH FLAGGED → absent`. A neighbouring Gmail Spam message with a
+yellow Web star correctly returned `\\Flagged` through both paths. This rules out an account,
+UID, folder, or generic flag-parser mix-up for the divergent message.
+
+Consequently, `data.verification.ok:true` for `message-mark` means **the target IMAP server
+accepted and returned the requested standard-flag state**. It does **not** prove that an
+already-loaded Gmail Web row renders the same state. During such a Gmail Web/IMAP divergence:
+
+1. Do not blindly repeat a mutation just because the Web row disagrees.
+2. Read the target via both normal actions: `message-info` (`FETCH FLAGS`) and
+   `message-search` with `flagged_only:true` (`SEARCH FLAGGED`).
+3. If both agree, report the IMAP state transparently; the generic IMAP backend has done its
+   contractually defined verification.
+4. If Gmail Web parity must be a hard guarantee, use a future **Gmail API** provider path that
+   reads/writes Gmail's `STARRED` label. It must be exposed as an explicit provider-specific
+   action or verification mode, never silently substituted for generic IMAP.
 
 **Anti-bypass guard:** `make smoke` (registry integrity) checks — at import time — that every
 action declaring required verification carries the `@require_verification` decorator, and the test

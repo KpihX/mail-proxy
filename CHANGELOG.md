@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.6.3 — 2026-09-03
+
+- **Fix:** `raw` IMAP `select` now selects read-write (`readonly=False`) instead of read-only. Write operations (`delete_messages`, `expunge`, `set_flags`, `move`, `copy` fallback) previously failed with "mailbox selected READ-ONLY". Raw is the foundation action and must be able to write.
+
+## 0.6.2 — 2026-09-03
+
+- **Doc:** corrected `_raw_imap` docstring — raw is a PURE passthrough with no fallback logic; compose multiple raw calls (`copy` + `delete_messages` + `expunge`) when a server lacks a capability (e.g. Zimbra without MOVE).
+
+## 0.6.0 — 2026-09-03
+
+- **Raw IMAP rewrite (foundation):** `do raw` now dispatches the requested imapclient method directly on the shared `MailClient.imap()` connection (`getattr(imapclient, method)(*args)`). It no longer uses a dedicated imaplib connection nor a 7-branch routing layer. This makes `raw` the true foundation action — every curated `do` action is a thin ergonomic specialisation of it.
+- **Payload shape:** `args` is now `list[Any]` (nested lists allowed), `method` is the imapclient method name directly (e.g. `search`, `fetch`, `move`), and `select` maps to `select_folder`.
+
+## 0.5.0 — 2026-09-03
+
+- **Raw IMAP rewrite:** replaced the imapclient routing layer (7 branches mapping each IMAP subcommand to a high-level method) with a pure imaplib passthrough. The raw IMAP handler now forwards `method` + `args` directly to the IMAP server — no command interpretation, no serialization, no bytes-to-string conversion. Same architecture as `tick-proxy do raw` (HTTP passthrough) and `tg-proxy do raw` (MTProto passthrough).
+- **Raw SMTP keyring fix:** SMTP raw now reuses the CLI-provided `client` instead of creating a second `MailClient`, ensuring custom-account keyring prompts resolve through the same shared instance.
+
+## 0.4.1 — 2026-09-03
+
+- **Breaking / Raw:** replaced the legacy IMAP-only shape with one strict, fallback-free schema. Every payload now requires `protocol` then `method`: `imap` uses IMAP method+args, `smtp` uses `send-rfc822` plus `params`, and `gmail-api` uses an HTTP method+endpoint. Every branch remains HITL-only.
+
+## 0.3.11 — 2026-09-03
+
+- **Documentation:** made the Gmail Web/IMAP star-state divergence explicit in `CONTRACT.md`,
+  `README.md`, and `message-mark --help`. `message-mark` verification proves normal IMAP
+  `FLAGS` read-back only; a future explicit Gmail API path is required when Gmail Web UI parity
+  must be guaranteed.
+
 ## 0.3.10 — 2026-09-03
 
 - **Fix:** `message-mark` verification for `flagged:false`/`seen:false`/etc. now correctly reports `ok: true` when the flag is removed. Previously, both `expected` and `observed` contained the flag, producing false negatives.

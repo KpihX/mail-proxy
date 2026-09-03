@@ -532,6 +532,14 @@ def message_mark(
     Pass `seen:true` to mark read, `seen:false` to mark unread; same pattern
     for `flagged`, `answered` and `draft`. Only the provided flags are touched.
 
+    Gmail caveat: `\\Flagged` is verified against Gmail IMAP via `UID FETCH
+    FLAGS`, not against a loaded Gmail Web page. A Gmail Web row can visibly
+    retain a yellow star after repeated refreshes while both `FETCH FLAGS` and
+    `SEARCH FLAGGED` say the message is not starred. In that divergence,
+    `verification.ok:true` proves the IMAP state only; do not claim it proves
+    Gmail Web UI parity. A future Gmail API backend must verify the `STARRED`
+    label when Web UI parity is required.
+
     Parameters:
         - uids (list[int]): Target UIDs.
         - folder (str): Folder of the messages (default INBOX).
