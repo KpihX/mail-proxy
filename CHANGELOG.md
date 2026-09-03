@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.10 — 2026-09-03
+
+- **Fix:** `message-mark` verification for `flagged:false`/`seen:false`/etc. now correctly reports `ok: true` when the flag is removed. Previously, both `expected` and `observed` contained the flag, producing false negatives.
+
 ## 0.3.9 — 2026-09-03
 
 - **Fix:** `label-set` now tries custom keywords FIRST and only falls back to `\Flagged` if verification shows they were silently dropped. This fixes Gmail (and Zimbra non-Junk folders) which support custom keywords but don't advertise `\*` in `PERMANENTFLAGS`.

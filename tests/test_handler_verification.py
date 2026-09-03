@@ -71,7 +71,7 @@ def test_message_mark_partial_failure_fails_verification():
     client = _FakeClient(imap)
     _, verification = message_mark(client, MessageMarkPayload(uids=[1, 2], seen=True))
     assert verification.ok is False
-    assert verification.actual["flags"] == []
+    assert verification.actual["flags"] == []  # flag not present on all UIDs
 
 
 def test_message_mark_remove_flag_verification():
@@ -79,9 +79,8 @@ def test_message_mark_remove_flag_verification():
     client = _FakeClient(imap)
     _, verification = message_mark(client, MessageMarkPayload(uids=[1, 2], seen=False))
     assert verification.ok is True
-    # actual lists the flags whose requested state is fully applied: \Seen is
-    # gone from every uid → it counts as applied.
-    assert verification.actual["flags"] == ["\\Seen"]
+    # After removal: flag is absent from all UIDs, expected is empty, actual is empty.
+    assert verification.actual["flags"] == []
 
 
 def test_label_set_verification_ok():

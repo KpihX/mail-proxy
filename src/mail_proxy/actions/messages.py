@@ -548,6 +548,9 @@ def message_mark(
         - Star and unread:
             `mail-proxy do message-mark '{"uids":[310],"flagged":true,"seen":false}'`
             → {"modified":1,"folder":"INBOX","account":"poly","verification":{"method":"UID FETCH INBOX","checked":["flags","uids"],"expected":{"uids":[310],"flags":["\\Flagged"]},"actual":{"uids":[310],"flags":["\\Flagged"]},"ok":true}}
+        - Unstar (remove flag):
+            `mail-proxy do message-mark '{"uids":[310],"flagged":false}'`
+            → {"modified":1,"folder":"INBOX","account":"poly","verification":{"method":"UID FETCH INBOX","checked":["flags","uids"],"expected":{"uids":[310],"flags":[]},"actual":{"uids":[310],"flags":[]},"ok":true}}
         - Mark as answered in Archive:
             `mail-proxy do message-mark '{"uids":[99],"answered":true,"folder":"Archive"}'`
             → {"modified":1,"folder":"Archive","account":"poly","verification":{"method":"UID FETCH Archive","checked":["flags","uids"],"expected":{"uids":[99],"flags":["\\Answered"]},"actual":{"uids":[99],"flags":["\\Answered"]},"ok":true}}
@@ -573,16 +576,14 @@ def message_mark(
         )
         if setting is not None
     ]
-    # A flag counts as applied only when EVERY target UID matches the requested
-    # state (present for add, absent for remove) — a silent partial failure
-    # (one UID missing the flag) fails the verification.
+    # expected = desired END STATE: only flags we are ADDING (setting=True)
+    expected_flags = [flag for flag, setting in flag_pairs if setting]
+    # observed = flags that ARE PRESENT on ALL target UIDs (among touched flags)
     observed: list[str] = []
-    for flag, setting in flag_pairs:
+    for flag, _ in flag_pairs:
         states = [flag in flags for flags in flags_by_uid.values()]
-        fully_applied = all(states) if setting else not any(states)
-        if fully_applied:
+        if all(states):
             observed.append(flag)
-    expected_flags = [flag for flag, _ in flag_pairs]
     observed_flags = sorted(observed)
     verification = compare(
         f"UID FETCH {p.folder}",
