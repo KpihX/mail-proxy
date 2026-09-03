@@ -1,10 +1,12 @@
-"""Registry integrity — the anti-drift gate for the 30 actions."""
+"""Registry integrity — the anti-drift gate for the 31 actions."""
 
 from mail_proxy.actions.registry import REGISTRY, by_group
 
-EXPECTED_ACTIONS = 30
+EXPECTED_ACTIONS = 31
 REQUIRE_VERIFICATION = {
     "label-set",
+    "label-delete",
+    "label-delete",
     "message-mark",
     "message-move",
     "message-archive",
@@ -104,7 +106,7 @@ def test_all_irreversible_actions_declare_preflight_and_locked_target():
 
 def test_reversible_marks_and_labels_never_require_hitl():
     """Only message moves are reviewed; flags and labels remain direct writes."""
-    for name in ("message-mark", "label-set"):
+    for name in ("message-mark", "label-set", "label-delete"):
         assert not REGISTRY[name].hitl, f"{name} must not require HITL"
         assert getattr(REGISTRY[name].handler, "__require_verification__", False), (
             f"{name} must declare read-back verification"

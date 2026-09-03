@@ -1259,7 +1259,12 @@ class IMAPClient:
 
     @_guard_imap
     def list_keywords(self, folder: str = "INBOX") -> list[str]:
-        """Return user-defined keywords available on a folder (PERMANENTFLAGS).
+        """Return user-defined keywords on a folder.
+
+        Combines PERMANENTFLAGS (server-allowed keywords) with keywords
+        actually observed on messages in the folder.  This catches Zimbra
+        tags and other keywords that servers store on messages without
+        advertising them in PERMANENTFLAGS.
 
         Args:
             folder (str): Folder name.
@@ -1271,12 +1276,40 @@ class IMAPClient:
             >>> IMAPClient(account).list_keywords("INBOX")
             ['important', 'todo']
         """
+        standard = {
+            "\\Seen",
+            "\\Answered",
+            "\\Flagged",
+            "\\Deleted",
+            "\\Draft",
+            "\\Recent",
+            "\\*",
+        }
+        keywords: set[str] = set()
+
+        # 1) PERMANENTFLAGS — keywords the server advertises as writable.
         resp = self._select_folder(folder, readonly=True)
-        raw_flags = resp.get(b"PERMANENTFLAGS", [])
-        standard = {"\\Seen", "\\Answered", "\\Flagged", "\\Deleted", "\\Draft", "\\*"}
-        result = []
-        for f in raw_flags:
+        for f in resp.get(b"PERMANENTFLAGS", []):
             s = f.decode() if isinstance(f, bytes) else str(f)
             if s not in standard:
-                result.append(s)
-        return result
+                keywords.add(s)
+
+        # 2) Scan flags on the last 50 messages to discover keywords that
+        #    are in use but not listed in PERMANENTFLAGS (common with Zimbra tags).
+        try:
+            uids = self._c().search("ALL")
+            if uids:
+                sample = uids[-50:] if len(uids) > 50 else uids
+                data = self._c().fetch(sample, ["FLAGS"])
+                for msg_data in data.values():
+                    if isinstance(msg_data, dict):
+                        flags = msg_data.get(b"FLAGS")
+                        if isinstance(flags, (list, tuple)):
+                            for f in flags:
+                                s = f.decode() if isinstance(f, bytes) else str(f)
+                                if s not in standard:
+                                    keywords.add(s)
+        except (OSError, ValueError, KeyError):
+            pass  # pragma: no cover
+
+        return sorted(keywords)

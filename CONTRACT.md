@@ -180,7 +180,7 @@ Naming convention (inherited from `tg-proxy`/`tick-proxy`):
 | Action | Source tool | HITL | Notes |
 |--------|-------------|:----:|-------|
 | `message-send` | `send_message` | ✅ | mandatory approval — reaches other people; Sent copy + optional bounce probe |
-| `message-reply` | `reply_message` | ✅ | Re:/In-Reply-To/References, `reply_all`, Sent copy + optional bounce probe |
+| `message-reply` | `reply_message` | ✅ | Re:/In-Reply-To/References, `reply_all`, local attachments, Sent copy + optional bounce probe |
 | `message-forward` | `forward_message` | ✅ | Fwd: prefix + quoted original; Sent copy + optional bounce probe |
 | `message-draft` | `save_draft` | ✅ | IMAP APPEND to Drafts — content write to the mailbox |
 

@@ -78,6 +78,7 @@ class MessageReplyPayload(ComposeBase):
         body_html (str): Optional HTML body.
         reply_all (bool): Include all original recipients in CC.
         bcc (list[str] | None): Blind copies — SMTP envelope only.
+        attachments (list[str] | None): Absolute local file paths to attach.
         folder (str): Folder of the original message.
 
     Examples:
@@ -90,6 +91,9 @@ class MessageReplyPayload(ComposeBase):
     body_html: str = Field("", description="Optional HTML body")
     reply_all: bool = Field(False, description="Reply to all original recipients")
     bcc: list[str] | None = Field(None, description="Blind copies (envelope only)")
+    attachments: list[str] | None = Field(
+        None, description="Absolute local file paths to attach"
+    )
     folder: str = Field("INBOX", description="Folder of the original message")
     subject_override: str | None = Field(
         None,
@@ -400,6 +404,7 @@ def message_reply(client: MailClient, p: MessageReplyPayload) -> dict:
         - body_html (str): Optional HTML body.
         - reply_all (bool): Include all original recipients.
         - bcc (list[str] | None): Blind copies (envelope only).
+        - attachments (list[str] | None): Absolute local file paths to attach.
         - signature (str): "default" | "" | custom plain-text.
         - verify_bounce_window_seconds (int): >0 → bounded DSN probe.
         - folder (str): Folder of the original message (default INBOX).
@@ -427,6 +432,7 @@ def message_reply(client: MailClient, p: MessageReplyPayload) -> dict:
         body_html=p.body_html,
         reply_all=p.reply_all,
         bcc=p.bcc,
+        attachments=p.attachments,
         signature=p.signature,
         subject_override=p.subject_override,
     )
@@ -456,6 +462,7 @@ def message_reply(client: MailClient, p: MessageReplyPayload) -> dict:
             cc=cc_copy or None,
             bcc=p.bcc,
             signature=p.signature,
+            attachments=p.attachments,
         )
     except Exception:  # noqa: BLE001 - the Sent copy is best-effort; never fail the send
         saved_to_sent = False

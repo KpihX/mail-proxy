@@ -180,6 +180,27 @@ def test_reply_without_subject_override_keeps_auto_prefix(monkeypatch):
     assert sent_msg["Subject"] == "Re: TP"
 
 
+def test_reply_includes_attachments(monkeypatch, tmp_path):
+    """Reply attachments are sent and keep their source filename."""
+    attachment = tmp_path / "diagram.png"
+    attachment.write_bytes(b"image-bytes")
+    original = Message(
+        uid=1,
+        message_id="<orig@host>",
+        subject="TP",
+        sender=Address(email="x@y.fr"),
+    )
+    fake = _fake_connect(monkeypatch, _FakeSMTP())
+    SMTPClient(ACCOUNT).reply(
+        original=original,
+        body_text="See attachment",
+        attachments=[str(attachment)],
+    )
+    _, _, raw = fake.sent[0]
+    sent_msg = message_from_bytes(raw)
+    assert any(part.get_filename() == "diagram.png" for part in sent_msg.walk())
+
+
 def test_reply_all_recipient_logic(monkeypatch):
     original = Message(
         uid=1,

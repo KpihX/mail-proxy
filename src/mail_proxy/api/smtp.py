@@ -438,6 +438,7 @@ class SMTPClient:
         body_html: str = "",
         reply_all: bool = False,
         bcc: list[str] | None = None,
+        attachments: list[str] | None = None,
         signature: str = "default",
         subject_override: str | None = None,
     ) -> str:
@@ -449,6 +450,7 @@ class SMTPClient:
             body_html (str): Optional HTML body.
             reply_all (bool): Include all original recipients in CC.
             bcc (list[str] | None): Blind copies — SMTP envelope only.
+            attachments (list[str] | None): Absolute local file paths to attach.
             signature (str): "default" | "" | custom text.
             subject_override (str | None): Exact subject to use instead of
                 the auto-computed "Re: <original>".
@@ -490,6 +492,7 @@ class SMTPClient:
             body_html=body_html,
             cc=cc_list or None,
             bcc=bcc,
+            attachments=attachments,
             in_reply_to=original.message_id,
             references=refs,
             signature=signature,

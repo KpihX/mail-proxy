@@ -317,6 +317,7 @@ mail-proxy do attachment-download '{"uid":42,"filename":"diagram.png"}'
 # → ~/Downloads/Mail-Proxy/<account-id>/diagram.png (created automatically)
 mail-proxy do attachment-download '{"uid":42,"filename":"diagram.png","save_path":"~/Downloads/Mail-Proxy/"}'
 # → ~/Downloads/Mail-Proxy/diagram.png
+mail-proxy do message-reply '{"uid":42,"body_text":"See attached","attachments":["/absolute/path/diagram.png"]}'
 
 # Compose actions always open the HITL review page before sending
 mail-proxy do message-send '{"to":["x@y.fr"],"subject":"Rendez-vous","body_text":"Dispo demain ?"}'

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.9 — 2026-09-03
+
+- **Fix:** `label-set` now tries custom keywords FIRST and only falls back to `\Flagged` if verification shows they were silently dropped. This fixes Gmail (and Zimbra non-Junk folders) which support custom keywords but don't advertise `\*` in `PERMANENTFLAGS`.
+
+## 0.3.8 — 2026-09-03
+
+- **New action: `label-delete`** — removes keyword labels from ALL messages in a folder that carry them. Scans last 500 messages, finds matching UIDs, removes labels, verifies absence.
+- **`label-list` now reports `custom_keywords_supported`** — detects whether the server supports custom IMAP keywords via PERMANENTFLAGS `\*` wildcard. Hotmail/Outlook returns `false`.
+- **`\\Recent` excluded** from custom keyword filter in `label-list` (v0.3.7).
+- **`label-list` scans message flags** (last 50 messages) in addition to PERMANENTFLAGS (fixes Zimbra tags not appearing).
+
+## 0.3.7 — 2026-09-03
+
+- **Fix:** `label-list` now scans actual message flags in addition to `PERMANENTFLAGS` to discover keywords in use (fixes Zimbra tags not appearing).
+
 ## 0.3.6 — 2026-09-03
 
 - **Fix:** IMAP UIDs are strictly folder-scoped and change upon moving. `message-move`, `message-archive`, `message-trash`, and `message-spam` verifications now correctly verify absence from the source folder rather than incorrectly attempting to find the old UIDs in the destination folder.
