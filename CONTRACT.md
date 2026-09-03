@@ -1,6 +1,6 @@
 # mail-proxy — Architecture Contract
 
-> **Status:** 🟢 **IMPLEMENTED — 24 actions.** This document is the authoritative architecture
+> **Status:** 🟢 **IMPLEMENTED — 36 actions.** This document is the authoritative architecture
 > contract for `mail-proxy`, the non-MCP IMAP/SMTP CLI built on the exact ADN of `tick-proxy`
 > (`$HOME/KpihX-Labs/tick_proxy`), itself built on the ADN of `tg-proxy`.
 
@@ -206,11 +206,20 @@ Naming convention (inherited from `tg-proxy`/`tick-proxy`):
 | `label-list` | `list_labels` | ❌ | PERMANENTFLAGS — Zimbra tags appear here |
 | `label-set` | `set_labels` | ❌ | add/remove keywords — **read-back verified** |
 
+### Zimbra (5)
+
+| Action | HITL | Notes |
+|--------|:----:|-------|
+| `zimbra-tag-list` | ❌ | native SOAP tag catalogue (IDs, names, colours, counts) |
+| `zimbra-tag-create` | ❌ | batch create names, optional colour index; verified |
+| `zimbra-tag-delete` | ✅ | batch native tag deletion by IDs; **prereq: remove all item associations first** (orphan flags remain otherwise); verified |
+| `zimbra-tag-apply` / `zimbra-tag-remove` | ✅ | batch association writes between tag IDs and item IDs; verified |
+
 ### Escape hatch (1)
 
 | Action | Source tool | HITL | Notes |
 |--------|-------------|:----:|-------|
-| `raw` | *(new — multi-protocol escape hatch)* | ✅ | arbitrary `imap`, RFC822 `smtp`, or `gmail-api` operation |
+| `raw` | *(new — multi-protocol escape hatch)* | ✅ | arbitrary `imap`, RFC822 `smtp`, `gmail-api`, or `zimbra-soap` operation |
 
 `raw` is the **foundation action**: every other `do` action is a thin, ergonomic
 specialisation of it.  For IMAP it dispatches the requested imapclient method directly on
@@ -268,7 +277,7 @@ or automatic verification.
 | Attachments | 1 |
 | Labels | 2 |
 | Escape hatch | 1 |
-| **TOTAL `do` actions** | **24** |
+| **TOTAL `do` actions** | **36** |
 
 **Coverage proof — all 25 `mail-mcp` tools accounted for:**
 

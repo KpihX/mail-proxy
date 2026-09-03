@@ -16,6 +16,7 @@ from . import (
     messages,
     raw,
     signatures,
+    zimbra,
 )
 from .base import ActionDef
 
@@ -27,6 +28,7 @@ _MODULES = (
     attachments,
     labels,
     signatures,
+    zimbra,
     raw,
 )
 

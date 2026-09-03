@@ -41,6 +41,39 @@
     </div>
   </section>
 
+  <section class="hitl-card" id="zimbra-tags-card" style="display:none">
+    <h2>🏷️ Zimbra Tags <span class="field-label">native tag resolution</span></h2>
+    <div class="hitl-card-body">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#1a1a2e;color:#fff;">
+            <th style="padding:8px;text-align:left;">ID</th>
+            <th style="padding:8px;text-align:left;">Name</th>
+            <th style="padding:8px;text-align:left;">Color</th>
+          </tr>
+        </thead>
+        <tbody id="zimbra-tags-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="hitl-card" id="zimbra-items-card" style="display:none">
+    <h2>📩 Zimbra Messages <span class="field-label">native item resolution</span></h2>
+    <div class="hitl-card-body">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#1a1a2e;color:#fff;">
+            <th style="padding:8px;text-align:left;">ID</th>
+            <th style="padding:8px;text-align:left;">From</th>
+            <th style="padding:8px;text-align:left;">Subject</th>
+            <th style="padding:8px;text-align:left;">Date</th>
+          </tr>
+        </thead>
+        <tbody id="zimbra-items-body"></tbody>
+      </table>
+    </div>
+  </section>
+
   <section class="hitl-card">
     <h2>📋 Action JSON <span class="field-label">editable · this complete object is submitted</span></h2>
     <div class="hitl-card-body">
@@ -83,6 +116,36 @@ if (payload._uid_resolution && Object.keys(payload._uid_resolution).length > 0) 
       '<td style="padding:8px;">' + (r.subject || '') + '</td>' +
       '<td style="padding:8px;font-size:12px;color:#888;">' + (r.date || '') + '</td>' +
       '<td style="padding:8px;font-size:12px;color:#888;">' + (r.folder || '') + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+if (payload._zimbra_tags && Object.keys(payload._zimbra_tags).length > 0) {
+  var card = document.getElementById('zimbra-tags-card');
+  var tbody = document.getElementById('zimbra-tags-body');
+  card.style.display = '';
+  Object.keys(payload._zimbra_tags).forEach(function(tagId) {
+    var t = payload._zimbra_tags[tagId];
+    var tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border)';
+    var swatch = '<span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:middle;"></span>';
+    tr.innerHTML = '<td style="padding:8px;font-weight:600;">' + tagId + '</td>' +
+      '<td style="padding:8px;">' + swatch + (t.name || '') + '</td>' +
+      '<td style="padding:8px;font-size:12px;color:#888;">' + (t.color || '') + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+if (payload._zimbra_items && Object.keys(payload._zimbra_items).length > 0) {
+  var card = document.getElementById('zimbra-items-card');
+  var tbody = document.getElementById('zimbra-items-body');
+  card.style.display = '';
+  Object.keys(payload._zimbra_items).forEach(function(itemId) {
+    var m = payload._zimbra_items[itemId];
+    var tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border)';
+    tr.innerHTML = '<td style="padding:8px;font-weight:600;">' + itemId + '</td>' +
+      '<td style="padding:8px;">' + (m.from || '') + '</td>' +
+      '<td style="padding:8px;">' + (m.subject || '') + '</td>' +
+      '<td style="padding:8px;font-size:12px;color:#888;">' + (m.date || '') + '</td>';
     tbody.appendChild(tr);
   });
 }

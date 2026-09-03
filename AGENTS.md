@@ -3,19 +3,19 @@
 ## Project
 
 Non-MCP CLI proxy for IMAP/SMTP mail. The full `mail-mcp` catalog (25 MCP tools) refactored into
-**24 flat `do` actions**, built on the exact ADN of `tick-proxy` (`$HOME/KpihX-Labs/tick_proxy`):
+**36 flat `do` actions**, built on the exact ADN of `tick-proxy` (`$HOME/KpihX-Labs/tick_proxy`):
 single binary, `do` + `admin` namespaces, `meta`+`data` envelope, docstring-driven `--help`,
 HITL web UI, autosave. **No Docker, no MCP transport, no daemon.**
 
 **Design reference: `CONTRACT.md` — read it before touching anything.**
 
-> **Status:** 🟢 IMPLEMENTED. The registry contains 24 actions and `make check` is the mandatory
+> **Status:** 🟢 IMPLEMENTED. The registry contains 36 actions and `make check` is the mandatory
 > quality gate. `CONTRACT.md` remains the architecture contract.
 
 ## Overview
 
 ```bash
-mail-proxy do <action> [payload|file] [-o path] [-f json|table]   # 24 RPC actions
+mail-proxy do <action> [payload|file] [-o path] [-f json|table]   # 36 RPC actions
 mail-proxy admin setup|status|reset|purge                        # ALWAYS JSON
 ```
 
@@ -33,11 +33,11 @@ mail-proxy admin setup|status|reset|purge                        # ALWAYS JSON
 | `src/mail_proxy/exceptions.py` | `MailProxyError`, `MailAPIError` |
 | `src/mail_proxy/hitl.py` | HITL web UI (free port, browser auto-open) |
 | `src/mail_proxy/api/` | Low-level mail layer: `imap.py`, `smtp.py`, `models.py` (domain models) |
-| `src/mail_proxy/actions/` | The 24 actions: `ActionDef` + colocated Pydantic payload + handler |
+| `src/mail_proxy/actions/` | The 36 actions: `ActionDef` + colocated Pydantic payload + handler |
 | `src/mail_proxy/actions/registry.py` | `name → ActionDef` map; duplicates raise at import |
 | `src/mail_proxy/actions/attachments.py` | Attachment download: default `~/Downloads/Mail-Proxy/<account-id>/`, explicit file or trailing-slash directory |
 | `src/mail_proxy/admin.py` | Single source of truth for admin logic (setup, status, reset, purge) |
-| `CONTRACT.md` | Architecture contract + full 24-action catalog |
+| `CONTRACT.md` | Architecture contract + full 36-action catalog |
 
 ## Key Rules
 
@@ -91,7 +91,7 @@ mail-proxy admin setup|status|reset|purge                        # ALWAYS JSON
 
 ```bash
 make check        # smoke + ruff check --fix + ruff format + py_compile + pyright + pytest
-make smoke        # mail-proxy do --help + registry integrity (24 actions, 0 duplicates)
+make smoke        # mail-proxy do --help + registry integrity (36 actions, 0 duplicates)
 make uv-link      # editable install (dev)
 make uv-install   # uv tool install . --force
 make git-push     # push to github + gitlab

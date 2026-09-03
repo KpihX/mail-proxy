@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.2 — 2026-09-03
+
+- **Zimbra HITL resolution:** `zimbra-tag-delete`, `zimbra-tag-apply`, and `zimbra-tag-remove`
+  now inject resolved tag names/colours and message subjects/senders into the HITL review before
+  approval — matching the IMAP `_uid_resolution` pattern.
+- **Zimbra tag create:** `zimbra-tag-create` payload changed from `names + color` to
+  `tags: [{name, color?}]` for per-tag colour control.
+- **HITL template:** added native Zimbra tag and item resolution cards.
+
+## 0.7.0 — 2026-09-03
+
+- **Zimbra SOAP:** `raw` now supports authenticated arbitrary `zimbra-soap` XML operations.
+- **Zimbra tags:** added native tag list, batch create/delete, and batch apply/remove actions.
+
 ## 0.6.9 — 2026-09-03
 
 - **Keyring:** increased the default custom-account password cache TTL from 15 to 20 minutes

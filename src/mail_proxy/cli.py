@@ -169,6 +169,89 @@ _UID_ACTIONS = frozenset(
 )
 
 
+_ZIMBRA_TAG_ACTIONS = frozenset(
+    {
+        "zimbra-tag-delete",
+        "zimbra-tag-apply",
+        "zimbra-tag-remove",
+    }
+)
+
+
+def _inject_zimbra_resolution(params: dict, action_name: str) -> None:
+    """Enrich params with resolved Zimbra tag and item data for HITL display.
+
+    For every ``tag_id`` in the payload, fetch the native tag name and colour.
+    For every ``item_id`` (when present), fetch the native message summary so
+    the reviewer sees the subject, sender, and date before approving.
+    """
+    if action_name not in _ZIMBRA_TAG_ACTIONS:
+        return
+
+    from .api.zimbra import ZimbraSOAPClient
+
+    account_id = params.get("account_id")
+    if not account_id:
+        return
+
+    tag_ids = params.get("tag_ids") or []
+    item_ids = params.get("item_ids") or []
+    if not tag_ids and not item_ids:
+        return
+
+    try:
+        client = MailClient(account_id)
+        client.imap()  # resolve keyring-backed credentials
+        soap = ZimbraSOAPClient(client.account)
+        client.close()
+    except (MailProxyError, MailAPIError):
+        return
+
+    # Resolve tags → real names + colours
+    tag_resolution: dict[str, dict[str, str]] = {}
+    try:
+        known = {t["id"]: t for t in soap.tags() if "id" in t}
+        for tag_id in tag_ids:
+            tag = known.get(tag_id)
+            if tag:
+                tag_resolution[tag_id] = {
+                    "name": tag.get("name", ""),
+                    "color": tag.get("color", ""),
+                }
+    except (MailProxyError, MailAPIError):
+        pass
+
+    # Resolve items → subject + sender + date
+    from datetime import datetime
+
+    item_resolution: dict[str, dict[str, str]] = {}
+    for item_id in item_ids:
+        try:
+            items = soap.items([item_id])
+            if items:
+                item = items[0]
+                raw_date = item.get("d", "")
+                try:
+                    dt = datetime.fromtimestamp(int(raw_date) / 1000, tz=UTC)
+                    date_str = dt.strftime("%Y-%m-%d %H:%M")
+                except (ValueError, OSError):
+                    date_str = raw_date
+                item_resolution[item_id] = {
+                    "subject": item.get("subject", ""),
+                    "from": item.get("from_name") or item.get("from_address", ""),
+                    "date": date_str,
+                }
+        except (MailProxyError, MailAPIError):
+            item_resolution[item_id] = {
+                "subject": "(unresolved)",
+                "from": "",
+                "date": "",
+            }
+
+    params["_zimbra_tags"] = tag_resolution
+    params["_zimbra_items"] = item_resolution
+
+
 def _inject_uid_resolution(params: dict, action_name: str) -> None:
     """Enrich params with a ``_uid_resolution`` dict for HITL display.
 
@@ -266,6 +349,7 @@ def _execute(
             sys.exit(1)
     if action.hitl:
         _inject_uid_resolution(params, action.name)
+        _inject_zimbra_resolution(params, action.name)
         response = request_approval(action.name, params)
         if response.status == "rejected":
             if client is not None:

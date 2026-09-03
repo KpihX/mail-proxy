@@ -1,8 +1,8 @@
-"""Registry integrity — the anti-drift gate for the 31 actions."""
+"""Registry integrity — the anti-drift gate for the 37 actions."""
 
 from mail_proxy.actions.registry import REGISTRY, by_group
 
-EXPECTED_ACTIONS = 31
+EXPECTED_ACTIONS = 37
 REQUIRE_VERIFICATION = {
     "label-set",
     "label-delete",
@@ -14,6 +14,10 @@ REQUIRE_VERIFICATION = {
     "message-spam",
     "message-delete",
     "folder-delete",
+    "zimbra-tag-create",
+    "zimbra-tag-delete",
+    "zimbra-tag-apply",
+    "zimbra-tag-remove",
 }
 HITL = {
     "message-send",
@@ -27,6 +31,9 @@ HITL = {
     "message-delete",
     "folder-delete",
     "raw",
+    "zimbra-tag-delete",
+    "zimbra-tag-apply",
+    "zimbra-tag-remove",
 }
 
 

@@ -10,6 +10,7 @@ from typing import Any, Literal
 from pydantic import ConfigDict, Field, model_validator
 
 from ..api.smtp import SMTPClient
+from ..api.zimbra import ZimbraSOAPClient
 from ..config import AccountDef, api_timeout
 from ..exceptions import MailProxyError
 from ..oauth2 import get_valid_access_token
@@ -26,7 +27,7 @@ class RawPayload(AccountScoped):
     bytes.  For Gmail API it calls any REST endpoint.
 
     Attributes:
-        protocol (str): Required: `imap`, `smtp`, or `gmail-api`.
+        protocol (str): Required: `imap`, `smtp`, `gmail-api`, or `zimbra-soap`.
         method (str): Required. `imap`: imapclient method name (`fetch`,
             `search`, `move`, `copy`, `set_flags`, `add_flags`, `remove_flags`,
             `get_flags`, `folder_status`, `list_folders`, `expunge`,
@@ -42,7 +43,7 @@ class RawPayload(AccountScoped):
     """
 
     model_config = ConfigDict(extra="forbid")
-    protocol: Literal["imap", "smtp", "gmail-api"] = Field(
+    protocol: Literal["imap", "smtp", "gmail-api", "zimbra-soap"] = Field(
         ..., description="Required protocol"
     )
     method: str = Field(..., description="Required protocol-native method")
@@ -79,6 +80,16 @@ class RawPayload(AccountScoped):
                 or not {"recipients", "rfc822_base64"} <= self.params.keys()
             ):
                 raise ValueError("smtp params require recipients and rfc822_base64")
+        elif self.protocol == "zimbra-soap":
+            if (
+                not isinstance(self.payload, str)
+                or not self.payload
+                or self.args
+                or self.select is not None
+            ):
+                raise ValueError(
+                    "zimbra-soap requires method plus non-empty XML payload only"
+                )
         elif (
             self.method.upper() not in {"GET", "POST", "PUT", "PATCH", "DELETE"}
             or not self.endpoint
@@ -207,9 +218,24 @@ def _raw_gmail_api(account: AccountDef, p: RawPayload) -> dict:
         return {"typ": "NO", "data": {}, "error": str(exc)}
 
 
+def _raw_zimbra_soap(client: Any, p: RawPayload) -> dict:
+    """Dispatch arbitrary authenticated Zimbra SOAP request XML."""
+    # Ensures custom-account keyring resolution before SOAP uses the password.
+    client.imap()
+    try:
+        return {
+            "typ": "OK",
+            "data": ZimbraSOAPClient(client.account, p.endpoint).call(
+                p.method, p.payload
+            ),
+        }
+    except MailProxyError as exc:
+        return {"typ": "NO", "data": {}, "error": str(exc)}
+
+
 @require_approval()
 def raw(client: Any, p: RawPayload) -> dict:
-    """Run arbitrary IMAP, SMTP RFC822, or Gmail API operations. ALWAYS HITL.
+    """Run arbitrary IMAP, SMTP RFC822, Gmail API, or Zimbra SOAP operations. ALWAYS HITL.
 
     `raw` is the foundation action: every other `do` action is a thin
     ergonomic specialisation of it.  It is unlimited only inside the selected
@@ -217,7 +243,7 @@ def raw(client: Any, p: RawPayload) -> dict:
     verification.
 
     Parameters:
-        - protocol (str): Required: `imap`, `smtp`, or `gmail-api`.
+        - protocol (str): Required: `imap`, `smtp`, `gmail-api`, or `zimbra-soap`.
         - method (str): Required. `imap`: imapclient method name (`fetch`,
           `search`, `move`, `copy`, `set_flags`, `folder_status`,
           `list_folders`, `expunge`, `namespace`, `uid`, `append`, …).
@@ -261,6 +287,9 @@ def raw(client: Any, p: RawPayload) -> dict:
         - Add Gmail's STARRED label through its canonical API:
             `mail-proxy do raw '{"protocol":"gmail-api","method":"post","endpoint":"/users/me/messages/ID/modify","payload":{"addLabelIds":["STARRED"]},"account_id":"gmail"}'`
             → {"typ":"200","data":{"id":"ID","labelIds":["SPAM","STARRED"]}}
+        - List Zimbra's native tag catalogue:
+            `mail-proxy do raw '{"protocol":"zimbra-soap","method":"GetTagRequest","payload":"<GetTagRequest xmlns=\"urn:zimbraMail\"/>","account_id":"poly"}'`
+            → {"typ":"OK","data":{"method":"GetTagRequest","xml":"<...GetTagResponse.../>"}}
 
     Note:
         `raw` is the foundation: every other `do` action is a thin ergonomic
@@ -287,6 +316,8 @@ def raw(client: Any, p: RawPayload) -> dict:
         return _raw_imap(client.imap(), p)
     if p.protocol == "smtp":
         return _raw_smtp(account, p)
+    if p.protocol == "zimbra-soap":
+        return _raw_zimbra_soap(client, p)
     return _raw_gmail_api(account, p)
 
 

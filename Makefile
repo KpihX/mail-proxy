@@ -32,7 +32,7 @@ check: smoke ## Run all checks (ruff lint+fix + ruff format + py_compile + pyrig
 
 smoke: ## Smoke test — CLI + registry integrity (mail-proxy do --help)
 	@$(UV_RUN) mail-proxy do --help > /dev/null 2>&1 || (echo "❌ CLI smoke test failed"; exit 1)
-	@$(PYTHON) -c "from mail_proxy.actions.registry import REGISTRY as R; assert len(R)==31, len(R); assert len(R)==len(set(R))"
+	@$(PYTHON) -c "from mail_proxy.actions.registry import REGISTRY as R; assert len(R)==37, len(R); assert len(R)==len(set(R))"
 	@echo "✅ CLI smoke test passed"
 
 # ─── Install / Uninstall (uv tool) ───

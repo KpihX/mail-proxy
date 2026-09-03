@@ -49,6 +49,8 @@ Summary of what is being asked:
 - [x] **Validation before write** — `auth login` validates email domain + endpoints BEFORE
       writing `accounts.json` + `.env` — prevents corrupted state from bad entries.
 - [x] **Personal data purge** — zero personal emails/names in `src/` or `tests/`.
+- [x] **Zimbra SOAP tags** — raw `zimbra-soap` XML escape hatch plus native list, batch create/delete,
+      and batch apply/remove actions; destructive association and deletion writes are HITL-reviewed.
 
 ## Remaining (P8 — live use + ecosystem switch)
 

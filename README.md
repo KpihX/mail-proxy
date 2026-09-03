@@ -33,7 +33,7 @@ mail-proxy do <action> [payload|file]                                  # 24 RPC 
 | `reset` | Clear all passwords (HITL-confirmed) |
 | `purge` | Delete the config directory (HITL-confirmed) |
 
-### `mail-proxy do` — 24 actions
+### `mail-proxy do` — 37 actions
 
 | Domain | Actions |
 |--------|---------|
@@ -43,6 +43,7 @@ mail-proxy do <action> [payload|file]                                  # 24 RPC 
 | **Folders** | `folder-list` · `folder-create` · `folder-rename` · `folder-delete` |
 | **Attachments** | `attachment-download` |
 | **Labels** | `label-list` · `label-set` |
+| **Zimbra** | `zimbra-tag-list` · `zimbra-tag-items` · `zimbra-tag-create` · `zimbra-tag-delete` · `zimbra-tag-apply` · `zimbra-tag-remove` |
 | **Escape hatch** | `raw` |
 
 Full catalog with source-tool mapping and HITL requirement: **`CONTRACT.md`**.
@@ -360,12 +361,17 @@ protocol primitives and more, but is not an unbounded code-execution surface:
 | `imap` (default) | Any IMAP command, including flags, folders, searches, copies, moves and extensions; isolated connection |
 | `smtp` | Any prebuilt RFC822/MIME message through the account SMTP transport |
 | `gmail-api` | Any Gmail REST endpoint, including canonical `STARRED` label operations; Google OAuth2 only |
+| `zimbra-soap` | Any authenticated Zimbra SOAP operation XML; provider-native tags and item actions |
 
 ```bash
 mail-proxy do raw '{"protocol":"imap","method":"UID","args":["FETCH","42","(FLAGS)"],"select":"INBOX"}'
 mail-proxy do raw '{"protocol":"smtp","method":"send-rfc822","params":{"recipients":["a@b.fr"],"rfc822_base64":"..."}}'
 mail-proxy do raw '{"protocol":"gmail-api","method":"post","endpoint":"/users/me/messages/ID/modify","payload":{"addLabelIds":["STARRED"]}}'
+mail-proxy do raw '{"protocol":"zimbra-soap","method":"GetTagRequest","payload":"<GetTagRequest xmlns=\"urn:zimbraMail\"/>","account_id":"poly"}'
 ```
+
+Native Zimbra tags accept batches: `zimbra-tag-create` accepts `names`; delete accepts `tag_ids`;
+apply/remove accept both `tag_ids` and `item_ids`. Delete, apply, and remove require HITL.
 
 Raw returns the provider response and carries no automatic verification. It never silently changes
 protocol, and never executes shell, filesystem, Python, or arbitrary runtime code.
