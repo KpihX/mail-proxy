@@ -320,7 +320,8 @@ async function submit(s) {
   if (r.ok) {
     document.body.innerHTML = '<div class="hitl-done"><h2>' +
       (s === 'approved' ? '✅ ACCOUNT ADDED' : '❌ CANCELLED') +
-      '</h2><p style="opacity:.6">Close this window.</p></div>';
+      '</h2></div>';
+    setTimeout(() => window.close(), 800);
   }
 }
 </script>
