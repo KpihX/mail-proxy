@@ -1113,7 +1113,18 @@ class IMAPClient:
             >>> IMAPClient(account).append_message("Drafts", b"Subject: x")
             1
         """
-        result = self._c().append(folder, raw_message, flags or [], None)
+        # The RFC822 bytes are already MIME-encoded; no UTF8 literal needed.
+        # imaplib wraps APPEND literals in "UTF8 ( … )" when the server
+        # advertises UTF8=ACCEPT, which Zimbra stores literally instead of
+        # stripping — corrupting the Sent/Drafts body.  Bypass the wrapper.
+        raw_conn = self._c()
+        imaplib_conn = raw_conn._imap
+        was_utf8 = imaplib_conn.utf8_enabled
+        imaplib_conn.utf8_enabled = False
+        try:
+            result = raw_conn.append(folder, raw_message, flags or [], None)
+        finally:
+            imaplib_conn.utf8_enabled = was_utf8
         return result if isinstance(result, int) else None
 
     # ------------------------------------------------------------------
