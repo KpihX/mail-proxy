@@ -321,7 +321,7 @@ async function submit(s) {
     document.body.innerHTML = '<div class="hitl-done"><h2>' +
       (s === 'approved' ? '✅ ACCOUNT ADDED' : '❌ CANCELLED') +
       '</h2></div>';
-    setTimeout(() => window.close(), 800);
+    setTimeout(() => { location.href = 'about:blank'; setTimeout(() => window.close(), 200); }, 800);
   }
 }
 </script>
