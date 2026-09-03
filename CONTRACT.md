@@ -212,17 +212,50 @@ Naming convention (inherited from `tg-proxy`/`tick-proxy`):
 |--------|-------------|:----:|-------|
 | `raw` | *(new — multi-protocol escape hatch)* | ✅ | arbitrary `imap`, RFC822 `smtp`, or `gmail-api` operation |
 
-`raw` is **always HITL**. It is unlimited only inside its explicit selected protocol:
+`raw` is the **foundation action**: every other `do` action is a thin, ergonomic
+specialisation of it.  For IMAP it dispatches the requested imapclient method directly on
+the shared `MailClient.imap()` connection — no dedicated connection, no routing, no fallback
+logic.  For SMTP it submits arbitrary RFC822 bytes.  For Gmail API it calls any REST endpoint.
 
-```bash
-mail-proxy do raw '{"protocol":"imap","method":"STATUS","args":["INBOX","(MESSAGES UNSEEN)"]}'
-mail-proxy do raw '{"protocol":"smtp","method":"send-rfc822","params":{"recipients":["a@b.fr"],"rfc822_base64":"..."}}'
-mail-proxy do raw '{"protocol":"gmail-api","method":"post","endpoint":"/users/me/messages/ID/modify","payload":{"addLabelIds":["STARRED"]}}'
+**Philosophy — raw vs curated `do`:**
+
+```
+raw         =  the primitive layer (imapclient dispatch, SMTP send, Gmail REST)
+do messages =  ergonomic wrappers around the same primitives (search, fetch, archive, …)
+do compose  =  content-building surcfaces that emit RFC822 then call raw SMTP
 ```
 
-No silent protocol fallback exists. IMAP is the default; SMTP uses the configured account's
-authenticated transport; Gmail API requires a Google OAuth2 account with the `mail.google.com`
-scope. `raw` never exposes shell, filesystem, Python/runtime execution, or automatic verification.
+- `raw` gives you the **primitives**.  Compose multiple `raw` calls when one primitive
+  is not enough — e.g. Zimbra has no MOVE capability, so you compose
+  `raw copy` → `raw delete_messages` → `raw expunge`.  **The composition belongs to the
+  caller, not the handler.**  This is the core design: raw stays pure, you iterate as
+  many times as needed.
+- `raw` is **always HITL**.  Every call opens the browser review page.
+- There is **no silent protocol fallback** inside `raw`.  If a primitive fails because
+  the server lacks a capability, the error is returned and you compose the next call.
+
+```bash
+# IMAP: dispatch any imapclient method (search, fetch, move, copy, set_flags, …)
+mail-proxy do raw '{"protocol":"imap","method":"search","args":[["SUBJECT","hello"]],"select":"INBOX"}'
+mail-proxy do raw '{"protocol":"imap","method":"fetch","args":[[42],["FLAGS","RFC822.SIZE"]],"select":"INBOX"}'
+mail-proxy do raw '{"protocol":"imap","method":"move","args":[[42],"Archive"],"select":"INBOX"}'
+
+# SMTP: submit arbitrary RFC822/MIME
+mail-proxy do raw '{"protocol":"smtp","method":"send-rfc822","params":{"recipients":["a@b.fr"],"rfc822_base64":"..."}}'
+
+# Gmail API: any REST endpoint
+mail-proxy do raw '{"protocol":"gmail-api","method":"post","endpoint":"/users/me/messages/ID/modify","payload":{"addLabelIds":["STARRED"]}}'
+
+# Zimbra archive (no MOVE): compose 3 raw calls
+mail-proxy do raw '{"protocol":"imap","method":"copy","args":[[42],"Archive"],"select":"INBOX"}'
+mail-proxy do raw '{"protocol":"imap","method":"delete_messages","args":[[42]],"select":"INBOX"}'
+mail-proxy do raw '{"protocol":"imap","method":"expunge","args":[],"select":"INBOX"}'
+```
+
+IMAP selects **read-write** (`readonly=False`) so both reads and writes work.  SMTP
+uses the configured account's authenticated transport.  Gmail API requires a Google
+OAuth2 account.  `raw` never exposes shell, filesystem, Python/runtime execution,
+or automatic verification.
 
 ### Action count
 

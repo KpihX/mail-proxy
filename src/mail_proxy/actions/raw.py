@@ -238,7 +238,7 @@ def raw(client: Any, p: RawPayload) -> dict:
             `mail-proxy do raw '{"protocol":"imap","method":"fetch","args":[[312],["FLAGS","RFC822.SIZE"]],"select":"INBOX"}'`
             → {"typ":"OK","data":{"312":{"FLAGS":["\\\\Seen"],"RFC822.SIZE":53085}}}
 
-        - IMAP MOVE to Archive (fallback COPY+STORE+EXPUNGE inherited):
+        - IMAP MOVE to Archive:
             `mail-proxy do raw '{"protocol":"imap","method":"move","args":[[312],"Archive"],"select":"INBOX"}'`
             → {"typ":"OK","data":{"312":"Archive"}}
 
@@ -263,9 +263,20 @@ def raw(client: Any, p: RawPayload) -> dict:
             → {"typ":"200","data":{"id":"ID","labelIds":["SPAM","STARRED"]}}
 
     Note:
-        Since the raw action is arbitrary and can execute mutations, it always
-        requires HITL validation.  Run it from a tmux ops pane so you can
-        receive and approve the browser review page:
+        `raw` is the foundation: every other `do` action is a thin ergonomic
+        specialisation of it.  It is a PURE passthrough with NO fallback logic.
+        If a primitive fails because the server lacks a capability (e.g. Zimbra
+        has no MOVE), compose multiple `raw` calls — the caller iterates, not
+        the handler:
+
+            # Zimbra archive (no MOVE): 3 raw calls
+            mail-proxy do raw '{"protocol":"imap","method":"copy","args":[[42],"Archive"],"select":"INBOX"}'
+            mail-proxy do raw '{"protocol":"imap","method":"delete_messages","args":[[42]],"select":"INBOX"}'
+            mail-proxy do raw '{"protocol":"imap","method":"expunge","args":[],"select":"INBOX"}'
+
+        Since raw is arbitrary and can execute mutations, it always requires
+        HITL validation.  Run it from a tmux ops pane so you can receive and
+        approve the browser review page:
         `mail-proxy do raw ./raw_payload.json`
     """
     account = client.account
