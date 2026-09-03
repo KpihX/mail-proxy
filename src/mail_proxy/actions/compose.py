@@ -344,7 +344,7 @@ def message_send(client: MailClient, p: MessageSendPayload) -> dict:
         - signature (str): "default" | "" | custom plain-text.
         - attachments (list[str] | None): Absolute local file paths.
         - verify_bounce_window_seconds (int): >0 → bounded DSN probe.
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Simple send:
@@ -422,7 +422,7 @@ def message_reply(client: MailClient, p: MessageReplyPayload) -> dict:
         - signature (str): "default" | "" | custom plain-text.
         - verify_bounce_window_seconds (int): >0 → bounded DSN probe.
         - folder (str): Folder of the original message (default INBOX).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Simple reply:
@@ -514,7 +514,7 @@ def message_forward(client: MailClient, p: MessageForwardPayload) -> dict:
         - signature (str): "default" | "" | custom plain-text.
         - verify_bounce_window_seconds (int): >0 → bounded DSN probe.
         - folder (str): Folder of the original message (default INBOX).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Simple forward:
@@ -603,7 +603,7 @@ def message_draft(client: MailClient, p: MessageDraftPayload) -> dict:
         - signature (str): "default" | "" | custom plain-text.
         - attachments (list[str] | None): Absolute local file paths.
         - drafts_folder (str): Drafts folder name (default "Drafts").
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Draft without attachments:

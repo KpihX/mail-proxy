@@ -35,7 +35,7 @@ class RawPayload(AccountScoped):
             `gmail-api`: HTTP verb.
         args (list): Positional arguments passed to the method.
         select (str | None): Folder to select first ("" = none).
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> RawPayload(protocol="imap", method="search", args=[["ALL"]]).method
@@ -253,7 +253,7 @@ def raw(client: Any, p: RawPayload) -> dict:
         - select (str | None): Folder to SELECT first ("" = none).
         - SMTP: `method="send-rfc822"` and `params` with recipients/rfc822_base64.
         - Gmail API: `method`, `endpoint`, `params`, `payload`.
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - IMAP SEARCH (subject quoted per IMAP):

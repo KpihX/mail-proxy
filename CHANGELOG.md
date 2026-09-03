@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.0 — 2026-09-03
+
+- **BREAKING: `account_id` is now mandatory on every action.** The default-account
+  fallback has been removed — `get_account(None)` raises an error. All payloads
+  must include `account_id`. The `"default": true` field in `accounts.json` is
+  no longer recognized. `admin auth default` command removed.
+- **Compose:** `from_address` option for `message-send`, `message-reply`,
+  `message-forward`, `message-draft` — provider-agnostic Send-as alias support.
+
 ## 0.7.3 — 2026-09-03
 
 - **Compose:** added `from_address` option to `message-send`, `message-reply`, and `message-forward`.

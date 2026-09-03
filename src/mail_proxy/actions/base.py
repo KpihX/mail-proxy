@@ -25,21 +25,17 @@ DELETE_CONFIRM_INTERVAL_SECONDS = 0.25
 
 
 class AccountScoped(BaseModel):
-    """Shared base of every action payload — optional account selection.
+    """Shared base of every action payload — mandatory account selection.
 
     Attributes:
-        account_id (str | None): Account id; omit → the default account.
+        account_id (str): Account id (required).
 
     Examples:
-        >>> AccountScoped().account_id is None
-        True
         >>> AccountScoped(account_id="poly").account_id
         'poly'
     """
 
-    account_id: str | None = Field(
-        None, description="Account id (omit → default account)"
-    )
+    account_id: str = Field(..., description="Account id (required)")
 
 
 @dataclass(frozen=True)

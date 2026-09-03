@@ -48,7 +48,7 @@ def attachment_download(client: MailClient, p: AttachmentDownloadPayload) -> dic
           ~/Downloads/Mail-Proxy/<account-id>/<filename>.
         - folder (str): Folder of the message (default INBOX).
         - ingest_base64 (bool): True → return `data_base64` instead of saving.
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Save to the default directory:

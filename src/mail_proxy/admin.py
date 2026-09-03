@@ -357,19 +357,12 @@ def auth_status() -> dict:
                 "id": a.id,
                 "email": a.email,
                 "aliases": list(a.aliases),
-                "default": a.default,
                 "configured": configured,
                 "auth_method": a.auth_method,
                 "imap": imap_probe,
                 "smtp": smtp_probe,
             }
         )
-
-    default_account = None
-    for a in accounts_data:
-        if a.default:
-            default_account = a.id
-            break
 
     dir_mode = None
     dir_status = "absent"
@@ -401,7 +394,7 @@ def auth_status() -> dict:
         "accounts_json_exists": ACCOUNTS_JSON_PATH.exists(),
         "env_exists": cfg.ENV_PATH.exists(),
         "accounts": accounts_state,
-        "default_account": default_account,
+        "default_account": None,
         "binary": binary_path,
         "permissions": {
             "config_dir": {
@@ -493,57 +486,6 @@ def auth_logout(account_id: str | None = None) -> AdminResult:
 
     return (
         {"account": target_id, "configured": False},
-        cast(Status, response.status),
-        response.edited,
-        response.comment,
-    )
-
-
-def auth_default(account: str) -> AdminResult:
-    """Set the default account used when -a is omitted.
-
-    The account is selected explicitly by the CLI's `-a` / `--account` option.
-    HITL confirms that selection; the reviewed payload cannot change it.
-
-    Returns:
-        tuple[dict, Status, bool, str]: A tuple containing the result
-        dict, the HITL response status, edited flag, and reviewer comment.
-
-    Examples:
-        - Set default to an account ID:
-            `mail-proxy admin auth default -a poly`
-            → {"account":"poly","default":true}
-        - Set default through an alias:
-            `mail-proxy admin auth default --account work`
-            → {"account":"outlook","default":true}
-        - Reviewer rejected:
-            `mail-proxy admin auth default -a poly`
-            → (rejected envelope, exit 1 — nothing changed)
-        - Unknown account:
-            `mail-proxy admin auth default -a unknown`
-            → (error, exit 1 — account does not exist)
-    """
-    load_env()
-    accounts = load_accounts(force=True)
-    target_id = get_account(account).id
-
-    form: dict[str, Any] = {
-        "action": "auth_default",
-        "account": target_id,
-        "instructions": f"Confirm {target_id!r} as the default account.",
-    }
-    response = request_approval("admin auth default", form)
-    if response.status == "rejected":
-        return None, "rejected", response.edited, response.comment
-
-    # Set default — clear all others, set target
-    for a in accounts:
-        a.default = a.id == target_id
-
-    write_accounts_json(accounts)
-
-    return (
-        {"account": target_id, "default": True},
         cast(Status, response.status),
         response.edited,
         response.comment,
@@ -686,7 +628,7 @@ def _probe_imap(account_id: str | None) -> dict[str, Any]:
     accounts, a password in .env is required.
 
     Args:
-        account_id (str | None): Account to probe (None → default).
+        account_id (str | None): Account to probe (None → first configured account).
 
     Returns:
         dict[str, Any]: `{"reachable": bool, "auth_ok": bool, "error": str}`.
@@ -759,7 +701,7 @@ def _probe_smtp(account_id: str | None) -> dict[str, Any]:
     "reachable". For password accounts, a password in .env is required.
 
     Args:
-        account_id (str | None): Account to probe (None → default).
+        account_id (str | None): Account to probe (None → first configured account).
 
     Returns:
         dict[str, Any]: `{"reachable": bool, "error": str}`.
@@ -1136,20 +1078,12 @@ def status() -> dict:
                     "id": a.id,
                     "email": a.email,
                     "aliases": list(a.aliases),
-                    "default": a.default,
                     "configured": configured,
                     "auth_method": a.auth_method,
                     "imap": imap_probe,
                     "smtp": smtp_probe,
                 }
             )
-
-    # ── default account ───────────────────────────────────────────────────
-    default_account = None
-    for a in accounts_data:
-        if a.default:
-            default_account = a.id
-            break
 
     # ── permissions ───────────────────────────────────────────────────────
     permissions: dict[str, Any] = {}
@@ -1202,7 +1136,7 @@ def status() -> dict:
 
     return {
         "accounts": accounts_state,
-        "default_account": default_account,
+        "default_account": None,
         "config_dir": str(cfg.CONFIG_DIR),
         "accounts_json": str(ACCOUNTS_JSON_PATH),
         "env": str(cfg.ENV_PATH),

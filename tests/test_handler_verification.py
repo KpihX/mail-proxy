@@ -52,7 +52,7 @@ def test_message_mark_verification_ok():
     imap = _FakeImap({1: [], 2: []})
     client = _FakeClient(imap)
     data, verification = message_mark(
-        client, MessageMarkPayload(uids=[1, 2], seen=True)
+        client, MessageMarkPayload(account_id="poly", uids=[1, 2], seen=True)
     )
     assert data["modified"] == 2
     assert verification.ok is True
@@ -69,7 +69,7 @@ def test_message_mark_partial_failure_fails_verification():
 
     imap = _FlakyImap({1: [], 2: []})
     client = _FakeClient(imap)
-    _, verification = message_mark(client, MessageMarkPayload(uids=[1, 2], seen=True))
+    _, verification = message_mark(client, MessageMarkPayload(account_id="poly", uids=[1, 2], seen=True))
     assert verification.ok is False
     assert verification.actual["flags"] == []  # flag not present on all UIDs
 
@@ -77,7 +77,7 @@ def test_message_mark_partial_failure_fails_verification():
 def test_message_mark_remove_flag_verification():
     imap = _FakeImap({1: ["\\Seen"], 2: ["\\Seen"]})
     client = _FakeClient(imap)
-    _, verification = message_mark(client, MessageMarkPayload(uids=[1, 2], seen=False))
+    _, verification = message_mark(client, MessageMarkPayload(account_id="poly", uids=[1, 2], seen=False))
     assert verification.ok is True
     # After removal: flag is absent from all UIDs, expected is empty, actual is empty.
     assert verification.actual["flags"] == []
@@ -87,7 +87,7 @@ def test_label_set_verification_ok():
     imap = _FakeImap({1: [], 2: []})
     client = _FakeClient(imap)
     data, verification = label_set(
-        client, LabelSetPayload(uids=[1, 2], labels=["todo"])
+        client, LabelSetPayload(account_id="poly", uids=[1, 2], labels=["todo"])
     )
     assert data["action"] == "added"
     assert verification.ok is True
@@ -101,7 +101,7 @@ def test_label_set_partial_failure_fails_verification():
 
     imap = _FlakyImap({1: [], 2: []})
     client = _FakeClient(imap)
-    _, verification = label_set(client, LabelSetPayload(uids=[1, 2], labels=["todo"]))
+    _, verification = label_set(client, LabelSetPayload(account_id="poly", uids=[1, 2], labels=["todo"]))
     assert verification.ok is False
     assert verification.actual["labels"] == []
 
@@ -110,7 +110,7 @@ def test_label_set_remove_verification():
     imap = _FakeImap({1: ["todo"], 2: ["todo"]})
     client = _FakeClient(imap)
     _, verification = label_set(
-        client, LabelSetPayload(uids=[1, 2], labels=["todo"], add=False)
+        client, LabelSetPayload(account_id="poly", uids=[1, 2], labels=["todo"], add=False)
     )
     assert verification.ok is True
     # actual lists the labels whose requested state is fully applied: todo is

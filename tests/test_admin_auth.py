@@ -103,7 +103,7 @@ def test_auth_status_shape(monkeypatch):
     )
     state = admin.status()
     assert "accounts_json" in state
-    assert state["default_account"] == "poly"
+    assert state["default_account"] is None
     poly = next(a for a in state["accounts"] if a["id"] == "poly")
     assert poly["configured"] is True
     assert poly["imap"]["auth_ok"] is True
@@ -151,48 +151,6 @@ def test_auth_logout_rejected(monkeypatch):
     # Password should still be there
     loaded_env = config.load_env()
     assert "MAIL_POLY_PASS" in loaded_env
-
-
-# ── auth default ──────────────────────────────────────────────────────────────
-
-
-def test_auth_default_sets_explicit_account_and_ignores_review_edits(monkeypatch):
-    monkeypatch.setattr(
-        admin,
-        "request_approval",
-        lambda action, payload: _approve({"account": "gmail"}, edited=True),
-    )
-
-    data, status, edited, _ = admin.auth_default("work")
-
-    assert status == "approved"
-    assert edited is True
-    assert data == {"account": "outlook", "default": True}
-    accounts = config.load_accounts(force=True)
-    assert [account.id for account in accounts if account.default] == ["outlook"]
-
-
-def test_auth_default_requires_account_option():
-    result = CliRunner().invoke(app, ["admin", "auth", "default"])
-
-    assert result.exit_code == 2
-    assert "Missing option '--account' / '-a'" in result.output
-    assert "Usage:" in result.output
-
-
-def test_auth_default_accepts_account_option(monkeypatch):
-    called: list[str] = []
-    monkeypatch.setattr(
-        admin,
-        "auth_default",
-        lambda account: (called.append(account) or ({"account": account}, "approved", False, "")),
-    )
-
-    result = CliRunner().invoke(app, ["admin", "auth", "default", "-a", "work"])
-
-    assert result.exit_code == 0
-    assert called == ["work"]
-    assert '"account": "work"' in result.output
 
 
 # ── reset / purge ─────────────────────────────────────────────────────────────

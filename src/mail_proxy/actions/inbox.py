@@ -14,7 +14,7 @@ class InboxCheckPayload(AccountScoped):
 
     Attributes:
         limit (int): Max summaries to return (default 10).
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> InboxCheckPayload().limit
@@ -30,7 +30,7 @@ class InboxDigestPayload(AccountScoped):
     """Payload of `inbox-digest` — structured daily overview.
 
     Attributes:
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> InboxDigestPayload().account_id is None
@@ -46,7 +46,7 @@ def inbox_check(client: MailClient, p: InboxCheckPayload) -> dict:
 
     Parameters:
         - limit (int): Max summaries to return (default 10).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Default check:
@@ -89,7 +89,7 @@ def inbox_digest(client: MailClient, p: InboxDigestPayload) -> dict:
     whole inbox picture for the current day.
 
     Parameters:
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Morning digest:

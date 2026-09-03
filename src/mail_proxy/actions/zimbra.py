@@ -52,7 +52,7 @@ def zimbra_tag_list(client: MailClient, p: AccountScoped) -> dict[str, Any]:
     """List native Zimbra tags with IDs, names, colors, and counters.
 
     Parameters:
-        - account_id (str | None): Zimbra account (omit → default).
+        - account_id (str): Account id (required).
     Examples:
         - `mail-proxy do zimbra-tag-list '{"account_id":"poly"}'`
           → {"tags":[{"id":"12","name":"Important"}],"account":"poly"}

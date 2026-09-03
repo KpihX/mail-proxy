@@ -12,7 +12,7 @@ class LabelListPayload(AccountScoped):
 
     Attributes:
         folder (str): Folder to inspect (default INBOX).
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> LabelListPayload().folder
@@ -30,7 +30,7 @@ class LabelSetPayload(AccountScoped):
         labels (list[str]): Keywords to add/remove, e.g. `["todo"]`.
         add (bool): True = add the labels, False = remove them.
         folder (str): Folder of the messages (default INBOX).
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> LabelSetPayload(uids=[1], labels=["todo"]).add
@@ -49,7 +49,7 @@ class LabelDeletePayload(AccountScoped):
     Attributes:
         labels (list[str]): Keywords to delete from ALL messages in a folder.
         folder (str): Folder to scan (default INBOX).
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> LabelDeletePayload(labels=["todo"]).folder
@@ -86,7 +86,7 @@ def label_list(client: MailClient, p: LabelListPayload) -> dict:
 
     Parameters:
         - folder (str): Folder to inspect (default INBOX).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - List labels of INBOX:
@@ -125,7 +125,7 @@ def label_set(client: MailClient, p: LabelSetPayload) -> tuple[dict, Verificatio
         - labels (list[str]): Keywords to add or remove.
         - add (bool): True=add, False=remove (default True).
         - folder (str): Folder of the messages (default INBOX).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Tag two messages:
@@ -202,7 +202,7 @@ def label_delete(
     Parameters:
         - labels (list[str]): Keywords to remove.
         - folder (str): Folder to scan (default INBOX).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Delete label from all messages in INBOX:

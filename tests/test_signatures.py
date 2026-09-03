@@ -227,7 +227,7 @@ def test_signature_list_handler():
     """signature-list returns all signatures with default flag."""
     from mail_proxy.actions.signatures import signature_list, SignatureListPayload
 
-    p = SignatureListPayload()
+    p = SignatureListPayload(account_id="poly")
     result = signature_list(None, p)
     assert result["account"] == "poly"
     assert len(result["signatures"]) == 1
@@ -239,7 +239,7 @@ def test_signature_create_handler():
     """signature-create adds a signature and returns the new id."""
     from mail_proxy.actions.signatures import signature_create, SignatureCreatePayload
 
-    p = SignatureCreatePayload(name="Personal", before_logo="Jane", after_logo="Corp")
+    p = SignatureCreatePayload(account_id="poly", name="Personal", before_logo="Jane", after_logo="Corp")
     result = signature_create(None, p)
     assert result["name"] == "Personal"
     assert result["id"].startswith("sig-")
@@ -261,12 +261,12 @@ def test_signature_update_handler():
     )
 
     # Create first
-    create_p = SignatureCreatePayload(name="Temp")
+    create_p = SignatureCreatePayload(account_id="poly", name="Temp")
     created = signature_create(None, create_p)
 
     # Update it
     update_p = SignatureUpdatePayload(
-        signature_id=created["id"], name="Updated Name"
+        account_id="poly", signature_id=created["id"], name="Updated Name"
     )
     result = signature_update(None, update_p)
     assert result["name"] == "Updated Name"
@@ -282,10 +282,10 @@ def test_signature_delete_handler():
     )
 
     # Create an extra so we can delete one
-    create_p = SignatureCreatePayload(name="Deleteme")
+    create_p = SignatureCreatePayload(account_id="poly", name="Deleteme")
     created = signature_create(None, create_p)
 
-    delete_p = SignatureDeletePayload(signature_id=created["id"])
+    delete_p = SignatureDeletePayload(account_id="poly", signature_id=created["id"])
     result = signature_delete(None, delete_p)
     assert result["deleted"] == created["id"]
     assert result["image_deleted"] is False
@@ -299,7 +299,7 @@ def test_signature_delete_only_one_raises():
     )
 
     # Outlook has no signatures, so this won't work — use poly which has 1
-    p = SignatureDeletePayload(signature_id="sig-poly001")
+    p = SignatureDeletePayload(account_id="poly", signature_id="sig-poly001")
     with pytest.raises(MailProxyError, match="Cannot delete the only signature"):
         signature_delete(None, p)
 
@@ -314,11 +314,11 @@ def test_signature_default_handler():
     )
 
     # Create a second signature
-    create_p = SignatureCreatePayload(name="NewDefault")
+    create_p = SignatureCreatePayload(account_id="poly", name="NewDefault")
     created = signature_create(None, create_p)
 
     # Set it as default
-    default_p = SignatureDefaultPayload(signature_id=created["id"])
+    default_p = SignatureDefaultPayload(account_id="poly", signature_id=created["id"])
     result = signature_default(None, default_p)
     assert result["default_signature_id"] == created["id"]
 
@@ -327,7 +327,7 @@ def test_signature_get_handler():
     """signature-get returns full details."""
     from mail_proxy.actions.signatures import signature_get, SignatureGetPayload
 
-    p = SignatureGetPayload(signature_id="sig-poly001")
+    p = SignatureGetPayload(account_id="poly", signature_id="sig-poly001")
     result = signature_get(None, p)
     assert result["id"] == "sig-poly001"
     assert result["name"] == "Work"
@@ -352,7 +352,7 @@ def test_signature_create_with_image(tmp_path):
     img.write_bytes(b"fake-png-data")
 
     p = SignatureCreatePayload(
-        name="With Image", image=str(img)
+        account_id="poly", name="With Image", image=str(img)
     )
     result = signature_create(None, p)
     assert result["has_image"] is True

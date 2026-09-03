@@ -289,7 +289,7 @@ def message_list(client: MailClient, p: MessageListPayload) -> list[dict]:
         - limit (int): Max rows (default 20).
         - unseen_only (bool): Only unread messages.
         - flagged_only (bool): Only flagged messages.
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Browse INBOX:
@@ -324,7 +324,7 @@ def message_info(client: MailClient, p: MessageInfoPayload) -> dict:
     Parameters:
         - uid (int): Message UID.
         - folder (str): Folder of the message (default INBOX).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Full message:
@@ -399,7 +399,7 @@ def message_search(client: MailClient, p: MessageSearchPayload) -> list[dict]:
         - min_size (int | None): Min size in bytes.
         - max_size (int | None): Max size in bytes.
         - limit (int): Max rows (default 20).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Search a sender substring:
@@ -489,7 +489,7 @@ def message_thread(client: MailClient, p: MessageThreadPayload) -> list[dict]:
         - message_id (str): Message-ID of the thread.
         - folder (str): Folder to search (default INBOX).
         - limit (int): Max messages (default 50).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Full thread:
@@ -547,7 +547,7 @@ def message_mark(
         - flagged (bool | None): True=star, False=unstar.
         - answered (bool | None): True=answered, False=unanswered.
         - draft (bool | None): True=draft flag, False=remove draft flag.
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Mark two messages as read:
@@ -615,7 +615,7 @@ def message_move(
         - uids (list[int]): Target UIDs.
         - destination_folder (str): Destination folder.
         - source_folder (str): Source folder (default INBOX).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Move to Archive:
@@ -710,7 +710,7 @@ def message_archive(
     Parameters:
         - uids (list[int]): Target UIDs.
         - source_folder (str): Source folder (default INBOX).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Archive two messages:
@@ -738,7 +738,7 @@ def message_trash(
     Parameters:
         - uids (list[int]): Target UIDs.
         - source_folder (str): Source folder (default INBOX).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Trash a message:
@@ -767,7 +767,7 @@ def message_spam(
     Parameters:
         - uids (list[int]): Target UIDs.
         - source_folder (str): Source folder (default INBOX).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Report as spam:
@@ -829,7 +829,7 @@ def message_delete(
     Parameters:
         - uids (list[int]): Target UIDs.
         - folder (str): Folder of the messages (default INBOX).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Delete a message permanently:

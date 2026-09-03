@@ -22,7 +22,7 @@ class FolderListPayload(AccountScoped):
     """Payload of `folder-list`.
 
     Attributes:
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> FolderListPayload().account_id is None
@@ -35,7 +35,7 @@ class FolderCreatePayload(AccountScoped):
 
     Attributes:
         name (str): Folder name — '/' separates sub-folders.
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> FolderCreatePayload(name="Work/Project-X").name
@@ -51,7 +51,7 @@ class FolderRenamePayload(AccountScoped):
     Attributes:
         old_name (str): Current folder name.
         new_name (str): New folder name.
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> FolderRenamePayload(old_name="Old", new_name="New").new_name
@@ -67,7 +67,7 @@ class FolderDeletePayload(AccountScoped):
 
     Attributes:
         names (list[str]): One or more folders to delete.
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> FolderDeletePayload(names=["Work/Project-X"]).names
@@ -84,7 +84,7 @@ def folder_list(client: MailClient, p: FolderListPayload) -> list[dict]:
     before any move/archive/trash operation.
 
     Parameters:
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - All folders:
@@ -113,7 +113,7 @@ def folder_create(client: MailClient, p: FolderCreatePayload) -> dict:
 
     Parameters:
         - name (str): Folder name — '/' separates sub-folders.
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Simple folder:
@@ -136,7 +136,7 @@ def folder_rename(client: MailClient, p: FolderRenamePayload) -> dict:
     Parameters:
         - old_name (str): Current folder name.
         - new_name (str): New folder name.
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Simple rename:
@@ -200,7 +200,7 @@ def folder_delete(
 
     Parameters:
         - names (list[str]): One or more folders to delete.
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Delete one empty folder:

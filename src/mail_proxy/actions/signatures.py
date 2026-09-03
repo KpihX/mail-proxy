@@ -53,7 +53,7 @@ class SignatureListPayload(AccountScoped):
     """Payload of `signature-list`.
 
     Attributes:
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> SignatureListPayload().account_id is None
@@ -71,7 +71,7 @@ class SignatureCreatePayload(AccountScoped):
         before_logo (str): Text above the logo image.
         after_logo (str): Text below the logo image.
         image (str): Absolute path to an image file to copy.
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> SignatureCreatePayload(name="Work").name
@@ -95,7 +95,7 @@ class SignatureUpdatePayload(AccountScoped):
         before_logo (str | None): New text above logo (None → keep current).
         after_logo (str | None): New text below logo (None → keep current).
         image (str | None): New image path to copy (None → keep, "" → clear).
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> SignatureUpdatePayload(signature_id="sig-1").signature_id
@@ -122,7 +122,7 @@ class SignatureDeletePayload(AccountScoped):
 
     Attributes:
         signature_id (str): ID of the signature to delete.
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> SignatureDeletePayload(signature_id="sig-1").signature_id
@@ -137,7 +137,7 @@ class SignatureDefaultPayload(AccountScoped):
 
     Attributes:
         signature_id (str): ID of the signature to set as default.
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> SignatureDefaultPayload(signature_id="sig-1").signature_id
@@ -152,7 +152,7 @@ class SignatureGetPayload(AccountScoped):
 
     Attributes:
         signature_id (str): ID of the signature to retrieve.
-        account_id (str | None): Account id (omit → default).
+        account_id (str): Account id (required).
 
     Examples:
         >>> SignatureGetPayload(signature_id="sig-1").signature_id
@@ -165,11 +165,11 @@ class SignatureGetPayload(AccountScoped):
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _load_account_from_json(account_id: str | None) -> tuple[list, int]:
+def _load_account_from_json(account_id: str) -> tuple[list, int]:
     """Load all accounts from JSON and return (raw_list, target_index).
 
     Args:
-        account_id (str | None): Account id to find, or None for default.
+        account_id (str): Account id to find (required).
 
     Returns:
         tuple[list, int]: The raw accounts list and the index of the target.
@@ -188,16 +188,11 @@ def _load_account_from_json(account_id: str | None) -> tuple[list, int]:
         raise MailProxyError("No accounts found in accounts.json.")
     target_idx: int | None = None
     for i, acc in enumerate(accounts):
-        if account_id and _match_account(account_id, acc):
-            target_idx = i
-            break
-        if not account_id and acc.default:
+        if _match_account(account_id, acc):
             target_idx = i
             break
     if target_idx is None:
-        if account_id:
-            raise MailProxyError(f"Account {account_id!r} not found.")
-        raise MailProxyError('No default account ("default": true) found.')
+        raise MailProxyError(f"Account {account_id!r} not found.")
     return accounts, target_idx
 
 
@@ -268,7 +263,7 @@ def signature_list(client: MailClient, p: SignatureListPayload) -> dict:
     the implicit default when no default_signature_id is set.
 
     Parameters:
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - List signatures:
@@ -284,16 +279,11 @@ def signature_list(client: MailClient, p: SignatureListPayload) -> dict:
     accounts = load_accounts(force=True)
     target = None
     for acc in accounts:
-        if p.account_id and _match_account(p.account_id, acc):
-            target = acc
-            break
-        if not p.account_id and acc.default:
+        if _match_account(p.account_id, acc):
             target = acc
             break
     if target is None:
-        if p.account_id:
-            raise MailProxyError(f"Account {p.account_id!r} not found.")
-        raise MailProxyError('No default account ("default": true) found.')
+        raise MailProxyError(f"Account {p.account_id!r} not found.")
 
     summaries = [
         _account_summary(sig, sig.id == target.default_signature_id)
@@ -314,7 +304,7 @@ def signature_create(client: MailClient, p: SignatureCreatePayload) -> dict:
         - before_logo (str): Text above the logo (default "").
         - after_logo (str): Text below the logo (default "").
         - image (str): Absolute path to an image file to copy (default "").
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Create a text-only signature:
@@ -365,7 +355,7 @@ def signature_update(client: MailClient, p: SignatureUpdatePayload) -> dict:
         - before_logo (str | None): New text above logo (None → keep current).
         - after_logo (str | None): New text below logo (None → keep current).
         - image (str | None): New image path (None → keep, "" → clear).
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Rename a signature:
@@ -421,7 +411,7 @@ def signature_delete(client: MailClient, p: SignatureDeletePayload) -> dict:
 
     Parameters:
         - signature_id (str): ID of the signature to delete.
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Delete a signature:
@@ -477,7 +467,7 @@ def signature_default(client: MailClient, p: SignatureDefaultPayload) -> dict:
 
     Parameters:
         - signature_id (str): ID of the signature to set as default.
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Set default:
@@ -509,7 +499,7 @@ def signature_get(client: MailClient, p: SignatureGetPayload) -> dict:
 
     Parameters:
         - signature_id (str): ID of the signature to retrieve.
-        - account_id (str | None): Account id (omit → default).
+        - account_id (str): Account id (required).
 
     Examples:
         - Get a signature:
@@ -525,17 +515,11 @@ def signature_get(client: MailClient, p: SignatureGetPayload) -> dict:
     accounts = load_accounts(force=True)
     target = None
     for acc in accounts:
-        if p.account_id and _match_account(p.account_id, acc):
-            target = acc
-            break
-        if not p.account_id and acc.default:
+        if _match_account(p.account_id, acc):
             target = acc
             break
     if target is None:
-        if p.account_id:
-            raise MailProxyError(f"Account {p.account_id!r} not found.")
-        raise MailProxyError('No default account ("default": true) found.')
-
+        raise MailProxyError(f"Account {p.account_id!r} not found.")
     sig = target.get_signature_by_id(p.signature_id)
     if sig is None:
         raise MailProxyError(

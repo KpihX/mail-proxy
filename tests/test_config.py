@@ -51,10 +51,9 @@ def test_resolve_account_with_secrets():
     assert account.from_address == "user.name@polytechnique.edu"
 
 
-def test_get_default_account_is_poly():
-    account = config.get_account(None)
-    assert account.id == "poly"
-    assert account.default is True
+def test_get_account_none_raises():
+    with pytest.raises(MailProxyError, match="account_id is required"):
+        config.get_account(None)
 
 
 def test_get_unknown_account_raises():
@@ -89,13 +88,13 @@ def test_ensure_env_missing_credentials_raises():
     config.write_env({"MAIL_POLY_PASS": ""})
     config.load_env()
     with pytest.raises(MailProxyError, match="MAIL_POLY_PASS"):
-        config.ensure_env()
+        config.ensure_env("poly")
 
 
 def test_ensure_env_ok():
     config.write_env({"MAIL_POLY_PASS": "p"})
     config.load_env()
-    assert config.ensure_env() is None
+    assert config.ensure_env("poly") is None
 
 
 def test_api_timeout_default_and_override(monkeypatch):

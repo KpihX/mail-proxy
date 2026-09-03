@@ -246,7 +246,6 @@ class AccountDef(BaseModel):
         smtp_starttls (bool | None): SMTP STARTTLS override; None → default.
         signatures (list[SignatureDef]): All signatures for this account.
         default_signature_id (str): ID of the default signature ("" → first found).
-        default (bool): True = used when `account_id` is omitted.
         imap (ImapEndpoint): Resolved IMAP endpoint (filled by load_accounts).
         smtp (SmtpEndpoint): Resolved SMTP endpoint (filled by load_accounts).
         username (str): Resolved login (filled by resolve_account).
@@ -279,7 +278,6 @@ class AccountDef(BaseModel):
     smtp_starttls: bool | None = None
     signatures: list[SignatureDef] = Field(default_factory=list)
     default_signature_id: str = ""
-    default: bool = False
     # Resolved at runtime — filled by load_accounts() and resolve_account().
     imap: ImapEndpoint = Field(default_factory=lambda: ImapEndpoint(host="localhost"))
     smtp: SmtpEndpoint = Field(default_factory=lambda: SmtpEndpoint(host="localhost"))
@@ -581,7 +579,6 @@ def load_accounts(force: bool = False) -> list[AccountDef]:
             smtp=smtp,
             signatures=signatures,
             default_signature_id=default_signature_id,
-            default=entry.get("default", False),
         )
         accounts.append(account)
 
@@ -628,8 +625,6 @@ def write_accounts_json(accounts: list[AccountDef]) -> None:
             entry["auth_method"] = a.auth_method
         if a.oauth2_provider:
             entry["oauth2_provider"] = a.oauth2_provider
-        if a.default:
-            entry["default"] = True
         if a.imap_host:
             entry["imap_host"] = a.imap_host
         if a.smtp_host:
@@ -827,20 +822,18 @@ def get_account(account_id: str | None = None) -> AccountDef:
     to the same account.
 
     Args:
-        account_id (str | None): Account id, alias, or email prefix; None → default.
+        account_id (str): Account id, alias, or email prefix (required).
 
     Returns:
         AccountDef: The resolved account (credentials + endpoint overrides).
 
     Raises:
-        MailProxyError: When the id is unknown or no default is declared.
+        MailProxyError: When the id is unknown or account_id is empty.
 
     Examples:
         >>> get_account("poly").id
         'poly'
         >>> get_account("x").id       # alias resolution
-        'poly'
-        >>> get_account().id          # default account
         'poly'
     """
     accounts = load_accounts()
@@ -867,10 +860,10 @@ def get_account(account_id: str | None = None) -> AccountDef:
             f"Unknown account {account_id!r}. Known accounts: "
             f"{', '.join(a.id + (' (' + '|'.join(a.aliases) + ')' if a.aliases else '') for a in accounts)}."
         )
-    for account in accounts:
-        if account.default:
-            return resolve_account(account)
-    raise MailProxyError('No default account ("default": true) in accounts.json.')
+    raise MailProxyError(
+        "account_id is required — omitting it is not allowed. "
+        "Known accounts: " + ", ".join(a.id for a in accounts)
+    )
 
 
 def api_timeout() -> float:
@@ -899,7 +892,7 @@ def ensure_env(account_id: str | None = None) -> None:
     MAIL_<ID>_PASS (for password auth) or a valid OAuth2 token (for oauth2 auth).
 
     Args:
-        account_id (str | None): Account to validate; None → default account.
+        account_id (str): Account to validate (required).
 
     Returns:
         None: Returns silently when the configuration is usable.
@@ -908,7 +901,6 @@ def ensure_env(account_id: str | None = None) -> None:
         MailProxyError: With the exact command to run as a fix.
 
     Examples:
-        >>> ensure_env()                  # default account credentials present
         >>> ensure_env("poly")
         MailProxyError: Accounts file not found at …/accounts.json.
     """
@@ -969,7 +961,6 @@ def list_accounts() -> list[dict[str, str | bool | list[str]]]:
             "prefix": account_env_prefix(a.id),
             "email": a.email,
             "aliases": list(a.aliases),
-            "default": a.default,
         }
         for a in accounts
     ]

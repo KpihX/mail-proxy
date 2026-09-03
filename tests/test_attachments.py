@@ -26,7 +26,7 @@ def test_attachment_download_defaults_to_account_scoped_mail_proxy_dir(tmp_path,
     monkeypatch.setattr(attachments.Path, "home", lambda: tmp_path)
 
     result = attachment_download(
-        _FakeClient(), AttachmentDownloadPayload(uid=42, filename="diagram.png")
+        _FakeClient(), AttachmentDownloadPayload(account_id="poly", uid=42, filename="diagram.png")
     )
 
     expected = tmp_path / "Downloads" / "Mail-Proxy" / "account-one" / "diagram.png"
@@ -41,6 +41,7 @@ def test_attachment_download_accepts_an_explicit_directory(tmp_path):
     result = attachment_download(
         _FakeClient(),
         AttachmentDownloadPayload(
+            account_id="poly",
             uid=42,
             filename="diagram.png",
             save_path=f"{destination}/",
@@ -59,6 +60,7 @@ def test_attachment_download_preserves_an_explicit_file_path(tmp_path):
     result = attachment_download(
         _FakeClient(),
         AttachmentDownloadPayload(
+            account_id="poly",
             uid=42,
             filename="diagram.png",
             save_path=str(destination),

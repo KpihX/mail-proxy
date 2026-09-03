@@ -81,19 +81,19 @@ def test_remaining_uids_filters_present():
 
 def test_message_delete_preflight_ok():
     client = _FakeClient(_FakeImap(present=[1, 2]))
-    _message_delete_preflight(client, MessageDeletePayload(uids=[1, 2]))
+    _message_delete_preflight(client, MessageDeletePayload(account_id="poly", uids=[1, 2]))
     assert True
 
 
 def test_message_delete_preflight_missing_raises():
     client = _FakeClient(_FakeImap(present=[1]))
     with pytest.raises(MailProxyError, match="do not exist"):
-        _message_delete_preflight(client, MessageDeletePayload(uids=[1, 99]))
+        _message_delete_preflight(client, MessageDeletePayload(account_id="poly", uids=[1, 99]))
 
 
 def test_folder_delete_preflight_ok():
     client = _FakeClient(_FakeImap(present=[], folders=["INBOX", "Work"]))
-    _folder_delete_preflight(client, FolderDeletePayload(names=["INBOX", "Work"]))
+    _folder_delete_preflight(client, FolderDeletePayload(account_id="poly", names=["INBOX", "Work"]))
     assert True
 
 
@@ -101,7 +101,7 @@ def test_folder_delete_preflight_missing_raises():
     client = _FakeClient(_FakeImap(present=[], folders=["INBOX"]))
     with pytest.raises(MailProxyError, match="Folders do not exist: 'Nope', 'Also-Nope'"):
         _folder_delete_preflight(
-            client, FolderDeletePayload(names=["INBOX", "Nope", "Also-Nope"])
+            client, FolderDeletePayload(account_id="poly", names=["INBOX", "Nope", "Also-Nope"])
         )
 
 
