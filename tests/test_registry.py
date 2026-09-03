@@ -96,7 +96,7 @@ def test_all_irreversible_actions_declare_preflight_and_locked_target():
     """Ensure every destructive review validates and locks its target first."""
     expected = {
         "message-delete": ("uids", "folder"),
-        "folder-delete": ("name",),
+        "folder-delete": ("names",),
     }
     for name, identity_fields in expected.items():
         handler = REGISTRY[name].handler

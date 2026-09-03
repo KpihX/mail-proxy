@@ -93,14 +93,16 @@ def test_message_delete_preflight_missing_raises():
 
 def test_folder_delete_preflight_ok():
     client = _FakeClient(_FakeImap(present=[], folders=["INBOX", "Work"]))
-    _folder_delete_preflight(client, FolderDeletePayload(name="Work"))
+    _folder_delete_preflight(client, FolderDeletePayload(names=["INBOX", "Work"]))
     assert True
 
 
 def test_folder_delete_preflight_missing_raises():
     client = _FakeClient(_FakeImap(present=[], folders=["INBOX"]))
-    with pytest.raises(MailProxyError, match="does not exist"):
-        _folder_delete_preflight(client, FolderDeletePayload(name="Nope"))
+    with pytest.raises(MailProxyError, match="Folders do not exist: 'Nope', 'Also-Nope'"):
+        _folder_delete_preflight(
+            client, FolderDeletePayload(names=["INBOX", "Nope", "Also-Nope"])
+        )
 
 
 def test_preflight_identity_fields_locked_in_review():
@@ -110,7 +112,7 @@ def test_preflight_identity_fields_locked_in_review():
     assert message_delete.__preflight_identity_fields__ == ("uids", "folder")
     from mail_proxy.actions.folders import folder_delete
 
-    assert folder_delete.__preflight_identity_fields__ == ("name",)
+    assert folder_delete.__preflight_identity_fields__ == ("names",)
 
 
 def test_verification_checks_declared():

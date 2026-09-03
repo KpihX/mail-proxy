@@ -14,7 +14,7 @@ Under the hood (sudo-like):
     1. First ``do`` → no cached secret (or TTL expired) → prompt via ``getpass``.
     2. Verify against IMAP.
     3. On success → store the secret in the system keyring + an ``.expiry``
-       timestamp key (default TTL 900s = 15 min, like ``timestamp_timeout``).
+        timestamp key (default TTL 1200s = 20 min).
     4. Subsequent ``do`` within TTL → read the keyring silently, no prompt.
     5. After TTL → re-prompt.
 
@@ -34,7 +34,7 @@ from .exceptions import MailProxyError
 logger = logging.getLogger(__name__)
 
 SERVICE = "mail-proxy"
-DEFAULT_TTL = 900  # seconds — 15 minutes, matching sudo's timestamp_timeout
+DEFAULT_TTL = 1200  # seconds — 20 minutes
 
 
 def _get_keyring() -> object:
@@ -62,14 +62,14 @@ def _get_keyring() -> object:
 
 
 def cache_ttl() -> float:
-    """Return the cache TTL in seconds (default 900, overridable via MAIL_CACHE_TTL).
+    """Return the cache TTL in seconds (default 1200, overridable via MAIL_CACHE_TTL).
 
     Returns:
         float: The TTL value.
 
     Examples:
         >>> cache_ttl()
-        900.0
+        1200.0
         >>> cache_ttl()   # with MAIL_CACHE_TTL=1800
         1800.0
     """

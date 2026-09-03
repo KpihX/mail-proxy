@@ -335,6 +335,7 @@ mail-proxy do message-send --help    # full docstring + exact payload schema
 mail-proxy do inbox-check
 mail-proxy do message-list '{"folder":"Archive","limit":5}'
 mail-proxy do message-search ./filter.json
+mail-proxy do folder-delete '{"names":["Projects/2025","Projects/2026"]}'
 mail-proxy do attachment-download '{"uid":42,"filename":"diagram.png"}'
 # → ~/Downloads/Mail-Proxy/<account-id>/diagram.png (created automatically)
 mail-proxy do attachment-download '{"uid":42,"filename":"diagram.png","save_path":"~/Downloads/Mail-Proxy/"}'

@@ -66,15 +66,15 @@ class FolderDeletePayload(AccountScoped):
     """Payload of `folder-delete`.
 
     Attributes:
-        name (str): Folder to delete.
+        names (list[str]): One or more folders to delete.
         account_id (str | None): Account id (omit → default).
 
     Examples:
-        >>> FolderDeletePayload(name="Work/Project-X").name
-        'Work/Project-X'
+        >>> FolderDeletePayload(names=["Work/Project-X"]).names
+        ['Work/Project-X']
     """
 
-    name: str = Field(..., description="Folder to delete")
+    names: list[str] = Field(..., min_length=1, description="Folders to delete")
 
 
 def folder_list(client: MailClient, p: FolderListPayload) -> list[dict]:
@@ -159,7 +159,7 @@ def folder_rename(client: MailClient, p: FolderRenamePayload) -> dict:
 
 
 def _folder_delete_preflight(client: MailClient, p: FolderDeletePayload) -> None:
-    """Fail before HITL when the target folder does not exist.
+    """Fail before HITL when any target folder does not exist.
 
     Args:
         client (MailClient): The mail client.
@@ -172,54 +172,62 @@ def _folder_delete_preflight(client: MailClient, p: FolderDeletePayload) -> None
         MailProxyError: When the folder is absent from the server.
 
     Examples:
-        >>> _folder_delete_preflight(client, FolderDeletePayload(name="INBOX"))
-        >>> _folder_delete_preflight(client, FolderDeletePayload(name="Nope"))
+        >>> _folder_delete_preflight(client, FolderDeletePayload(names=["INBOX"]))
+        >>> _folder_delete_preflight(client, FolderDeletePayload(names=["Nope"]))
         Traceback (most recent call last):
         ...
-        mail_proxy.exceptions.MailProxyError: Folder 'Nope' does not exist.
+        mail_proxy.exceptions.MailProxyError: Folders do not exist: 'Nope'.
     """
-    if not client.imap().folder_exists(p.name):
-        raise MailProxyError(f"Folder {p.name!r} does not exist — nothing to delete.")
+    missing = [name for name in p.names if not client.imap().folder_exists(name)]
+    if missing:
+        rendered = ", ".join(repr(name) for name in missing)
+        raise MailProxyError(f"Folders do not exist: {rendered}.")
 
 
 @require_approval()
-@require_preflight(check=_folder_delete_preflight, identity_fields=("name",))
+@require_preflight(check=_folder_delete_preflight, identity_fields=("names",))
 @require_verification("deleted")
 def folder_delete(
     client: MailClient, p: FolderDeletePayload
 ) -> tuple[dict, Verification]:
-    """Delete an IMAP folder (HITL required, preflighted and verified).
+    """Delete one or more IMAP folders (HITL required, preflighted and verified).
 
     WARNING: some servers require the folder to be empty first — clear it with
-    `message-move` or `message-delete` beforehand. The folder must exist, the
-    review locks its name, and the deletion is confirmed by re-reading the
-    folder list until the name is absent.
+    `message-move` or `message-delete` beforehand. Every folder must exist
+    before the review opens; the review locks the entire names list. Deletions
+    execute sequentially and are confirmed by re-reading the folder list until
+    every requested name is absent.
 
     Parameters:
-        - name (str): Folder to delete.
+        - names (list[str]): One or more folders to delete.
         - account_id (str | None): Account id (omit → default).
 
     Examples:
-        - Delete an empty folder:
-            `mail-proxy do folder-delete '{"name":"Work/Project-X"}'`
-            → {"deleted":true,"name":"Work/Project-X","account":"poly","verification":{"method":"LIST Work/Project-X","checked":["deleted"],"expected":{"deleted":"Work/Project-X"},"actual":{"deleted":"Work/Project-X"},"ok":true}}
-        - Delete on another account:
-            `mail-proxy do folder-delete '{"name":"2026","account_id":"work"}'`
-            → {"deleted":true,"name":"2026","account":"work","verification":{"method":"LIST 2026","checked":["deleted"],"expected":{"deleted":"2026"},"actual":{"deleted":"2026"},"ok":true}}
-        - Delete a non-existent folder fails before HITL:
-            `mail-proxy do folder-delete '{"name":"Nope"}'`
+        - Delete one empty folder:
+            `mail-proxy do folder-delete '{"names":["Work/Project-X"]}'`
+            → {"deleted":true,"names":["Work/Project-X"],"account":"poly","verification":{"method":"LIST Work/Project-X","checked":["deleted"],"expected":{"deleted":["Work/Project-X"]},"actual":{"deleted":["Work/Project-X"]},"ok":true}}
+        - Delete several folders on another account:
+            `mail-proxy do folder-delete '{"names":["2025","2026"],"account_id":"work"}'`
+            → {"deleted":true,"names":["2025","2026"],"account":"work","verification":{"method":"LIST 2025, 2026","checked":["deleted"],"expected":{"deleted":["2025","2026"]},"actual":{"deleted":["2025","2026"]},"ok":true}}
+        - A non-existent folder fails before HITL:
+            `mail-proxy do folder-delete '{"names":["Nope"]}'`
             → (error envelope, exit 1 — no review page opens)
     """
     imap = client.imap()
-    imap.delete_folder(p.name)
+    for name in p.names:
+        imap.delete_folder(name)
 
     def read() -> Any:
-        return [f.name for f in imap.list_folders() if f.name == p.name]
+        return [f.name for f in imap.list_folders() if f.name in p.names]
 
     verification = verify_absence(
-        read, p.name, f"LIST {p.name}", timeout_seconds=10.0, interval_seconds=0.25
+        read,
+        p.names,
+        f"LIST {', '.join(p.names)}",
+        timeout_seconds=10.0,
+        interval_seconds=0.25,
     )
-    data = {"deleted": True, "name": p.name, "account": client.account.id}
+    data = {"deleted": True, "names": p.names, "account": client.account.id}
     return data, verification
 
 

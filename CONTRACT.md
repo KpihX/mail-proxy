@@ -191,7 +191,7 @@ Naming convention (inherited from `tg-proxy`/`tick-proxy`):
 | `folder-list` | `list_folders` | ❌ | |
 | `folder-create` | `create_folder` | ❌ | |
 | `folder-rename` | `rename_folder` | ❌ | |
-| `folder-delete` | `delete_folder` | ✅ | preflight (must exist) + identity lock + absence poll |
+| `folder-delete` | `delete_folder` | ✅ | one or more folders: preflight (all must exist) + locked `names` + absence poll |
 
 ### Attachments (1)
 
@@ -340,7 +340,7 @@ def message_move(client: MailClient, p: MessageMovePayload) -> tuple[dict, Verif
 | `message-mark` | `uids`, `flags` | a flag must be applied on **EVERY** target UID (partial failure detection) |
 | `label-set` | `uids`, `labels` | same all-UID semantics for keywords |
 | `message-delete` | `deleted` | absence poll until every UID is gone (see `verify_absence`) |
-| `folder-delete` | `deleted` | absence poll until the folder name disappears from LIST |
+| `folder-delete` | `deleted` | absence poll until every requested folder name disappears from LIST |
 
 ### Gmail `\\Flagged` verification boundary
 
@@ -584,10 +584,10 @@ with an `ssh -L` hint.
 
 **Preflight + locked identity on every irreversible delete:** `message-delete` pre-reads every
 target UID (absent UIDs fail before HITL — no review page wasted) and locks `uids`+`folder` in the
-approval payload; `folder-delete` pre-reads the folder list and locks `name`. A reviewer-edited
-identity rejects the command before any write. After approval, the delete is confirmed by polling
-the read until the resource is absent (`verify_absence`, 10 s bounded) — the proof lands in
-`data.verification`.
+approval payload; `folder-delete` pre-reads every requested folder and locks `names`. A
+reviewer-edited identity rejects the command before any write. After approval, folders are deleted
+sequentially and the delete is confirmed by polling until every requested name is absent
+(`verify_absence`, 10 s bounded) — the proof lands in `data.verification`.
 
 **Everything else (reads, reversible moves, flag changes, label changes) runs without prompting**
 but reversible writes still carry the structural read-back verification.

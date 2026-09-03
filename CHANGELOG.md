@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.9 — 2026-09-03
+
+- **Keyring:** increased the default custom-account password cache TTL from 15 to 20 minutes
+  (`1200` seconds); `MAIL_CACHE_TTL` remains the explicit override.
+
+## 0.6.8 — 2026-09-03
+
+- **Breaking / Folder delete:** `folder-delete` now accepts `names: list[str]` instead of one
+  `name`. It preflights and locks the complete list in one HITL review, deletes folders
+  sequentially, then verifies that every requested name is absent from IMAP LIST.
+
 ## 0.6.3 — 2026-09-03
 
 - **Fix:** `raw` IMAP `select` now selects read-write (`readonly=False`) instead of read-only. Write operations (`delete_messages`, `expunge`, `set_flags`, `move`, `copy` fallback) previously failed with "mailbox selected READ-ONLY". Raw is the foundation action and must be able to write.

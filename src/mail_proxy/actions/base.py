@@ -260,7 +260,7 @@ def compare(
 
 def verify_absence(
     read: Callable[[], Any],
-    resource_id: str,
+    resource_id: Any,
     method: str,
     *,
     timeout_seconds: float = DELETE_CONFIRM_TIMEOUT_SECONDS,
@@ -276,7 +276,7 @@ def verify_absence(
     Args:
         read (Callable[[], Any]): Fresh read returning the remaining resources
             (empty = absent).
-        resource_id (str): Deleted resource identifier.
+        resource_id (Any): Deleted resource identifier or identifier collection.
         method (str): Human-readable read endpoint recorded in the proof.
         timeout_seconds (float): Maximum eventual-consistency confirmation wait.
         interval_seconds (float): Delay between reads while the stale resource

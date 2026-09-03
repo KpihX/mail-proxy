@@ -582,7 +582,7 @@ def _probe_account_imap(account: "cfg.AccountDef") -> dict[str, Any]:
             return {
                 "reachable": True,
                 "auth_ok": False,
-                "error": "Custom — password prompted on first do (keyring, 15 min TTL).",
+                "error": "Custom — password prompted on first do (keyring, 20 min TTL).",
             }
         except MailAPIError as exc:
             return {"reachable": False, "auth_ok": False, "error": str(exc)}
@@ -644,7 +644,7 @@ def _probe_account_smtp(account: "cfg.AccountDef") -> dict[str, Any]:
             server.quit()
             return {
                 "reachable": True,
-                "error": "Custom — password prompted on first do (keyring, 15 min TTL).",
+                "error": "Custom — password prompted on first do (keyring, 20 min TTL).",
             }
         except Exception as exc:  # noqa: BLE001
             return {"reachable": False, "error": str(exc)}
@@ -720,7 +720,7 @@ def _probe_imap(account_id: str | None) -> dict[str, Any]:
             return {
                 "reachable": True,
                 "auth_ok": False,
-                "error": "Custom — password prompted on first do (keyring, 15 min TTL).",
+                "error": "Custom — password prompted on first do (keyring, 20 min TTL).",
             }
         except Exception as exc:  # noqa: BLE001
             return {"reachable": False, "auth_ok": False, "error": str(exc)}
@@ -793,7 +793,7 @@ def _probe_smtp(account_id: str | None) -> dict[str, Any]:
             server.quit()
             return {
                 "reachable": True,
-                "error": "Custom — password prompted on first do (keyring, 15 min TTL).",
+                "error": "Custom — password prompted on first do (keyring, 20 min TTL).",
             }
         except Exception as exc:  # noqa: BLE001
             return {"reachable": False, "error": str(exc)}
