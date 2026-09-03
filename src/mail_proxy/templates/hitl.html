@@ -107,7 +107,7 @@ async function submit(s) {
     document.body.innerHTML = '<div class="hitl-done"><h2>' +
       (s === 'approved' ? '✅ APPROVED' : '❌ REJECTED') +
       '</h2></div>';
-    setTimeout(() => { location.href = 'about:blank'; setTimeout(() => window.close(), 200); }, 800);
+    setTimeout(() => { window.open('', '_self', ''); window.close(); }, 800);
   }
 }
 </script>
