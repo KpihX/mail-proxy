@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.3 — 2026-09-03
+
+- **Compose:** added `from_address` option to `message-send`, `message-reply`, and `message-forward`.
+  Overrides the `From` header to send as a different address (e.g. Gmail Send-as alias,
+  Outlook custom SMTP). SMTP authentication always uses the primary account credentials;
+  only the visible From header changes. Provider-agnostic — works with any SMTP server
+  that accepts From overrides.
+
 ## 0.7.2 — 2026-09-03
 
 - **Zimbra HITL resolution:** `zimbra-tag-delete`, `zimbra-tag-apply`, and `zimbra-tag-remove`

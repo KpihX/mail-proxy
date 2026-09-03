@@ -22,19 +22,28 @@ class ComposeBase(AccountScoped):
     Attributes:
         signature (str): "default" → configured signature with logo | "" → none
             | any text → custom plain-text signature.
+        from_address (str): Override the From header to send as a different
+            address (e.g. a Gmail Send-as alias like ``kpihx@kpihx-labs.com``).
+            Empty string → use the account default. The SMTP authentication
+            always uses the primary account credentials; only the visible
+            From header changes.
         verify_bounce_window_seconds (int): >0 → wait N seconds after send,
             then scan INBOX for an immediate DSN/bounce.
 
     Examples:
         >>> ComposeBase().signature
         'default'
-        >>> ComposeBase(verify_bounce_window_seconds=30).verify_bounce_window_seconds
-        30
+        >>> ComposeBase(from_address="kpihx@kpihx-labs.com").from_address
+        'kpihx@kpihx-labs.com'
     """
 
     signature: str = Field(
         "default",
         description='"default" | "" (none) | any custom plain-text signature',
+    )
+    from_address: str = Field(
+        "",
+        description="Override From header (Send-as alias); empty → account default",
     )
     verify_bounce_window_seconds: int = Field(
         0, description=">0: wait N seconds then probe INBOX for a bounce (DSN)"
@@ -129,7 +138,7 @@ class MessageForwardPayload(ComposeBase):
     )
 
 
-class MessageDraftPayload(AccountScoped):
+class MessageDraftPayload(ComposeBase):
     """Payload of `message-draft`.
 
     Attributes:
@@ -139,6 +148,7 @@ class MessageDraftPayload(AccountScoped):
         body_html (str): Optional HTML body.
         cc (list[str] | None): Visible carbon copies.
         bcc (list[str] | None): Blind copies — SMTP envelope only.
+        from_address (str): Override From header (Send-as alias).
         signature (str): "default" | "" | custom plain-text signature.
         attachments (list[str] | None): Absolute local file paths.
         drafts_folder (str): Drafts folder name (default "Drafts").
@@ -154,10 +164,6 @@ class MessageDraftPayload(AccountScoped):
     body_html: str = Field("", description="Optional HTML body")
     cc: list[str] | None = Field(None, description="Visible carbon copies")
     bcc: list[str] | None = Field(None, description="Blind copies (envelope only)")
-    signature: str = Field(
-        "default",
-        description='"default" | "" (none) | any custom plain-text signature',
-    )
     attachments: list[str] | None = Field(
         None, description="Absolute local file paths to attach"
     )
@@ -333,6 +339,8 @@ def message_send(client: MailClient, p: MessageSendPayload) -> dict:
         - cc (list[str] | None): Visible carbon copies.
         - bcc (list[str] | None): Blind copies — added to the SMTP envelope
           only, never visible in headers.
+        - from_address (str): Override the From header to send as a different
+          address (e.g. a Gmail Send-as alias). Empty → account default.
         - signature (str): "default" | "" | custom plain-text.
         - attachments (list[str] | None): Absolute local file paths.
         - verify_bounce_window_seconds (int): >0 → bounded DSN probe.
@@ -342,6 +350,9 @@ def message_send(client: MailClient, p: MessageSendPayload) -> dict:
         - Simple send:
             `mail-proxy do message-send '{"to":["x@y.fr"],"subject":"Rendez-vous","body_text":"Dispo demain 15h ?"}'`
             → {"smtp_accepted":true,"sent":true,"message_id":"<a1b2c3d4@webmail.polytechnique.fr>","account":"poly","saved_to_sent":true,"sent_folder":"Sent","delivery_status":"unknown","bounce_details":null}
+        - Send as a different address (Gmail Send-as alias):
+            `mail-proxy do message-send '{"to":["x@y.fr"],"subject":"Contact","body_text":"Bonjour","from_address":"kpihx@kpihx-labs.com","account_id":"kapoivha"}'`
+            → {"smtp_accepted":true,"sent":true,"message_id":"<a1b2c3d4@gmail.com>","account":"kapoivha","saved_to_sent":true,"sent_folder":"Sent","delivery_status":"unknown","bounce_details":null}
         - Send with BCC, signature and bounce probe:
             `mail-proxy do message-send '{"to":["x@y.fr"],"bcc":["z@w.fr"],"subject":"Rapport","body_text":"Ci-joint.","attachments":["/tmp/report.pdf"],"verify_bounce_window_seconds":60}'`
             → {"smtp_accepted":true,"sent":true,"message_id":"<a1b2c3d4@webmail.polytechnique.fr>","account":"poly","saved_to_sent":true,"sent_folder":"Sent","delivery_status":"delivered_hint","bounce_details":null}
@@ -359,6 +370,7 @@ def message_send(client: MailClient, p: MessageSendPayload) -> dict:
         bcc=p.bcc,
         signature=p.signature,
         attachments=p.attachments,
+        from_address=p.from_address,
     )
     saved_to_sent = False
     sent_folder = ""
@@ -404,6 +416,8 @@ def message_reply(client: MailClient, p: MessageReplyPayload) -> dict:
         - body_html (str): Optional HTML body.
         - reply_all (bool): Include all original recipients.
         - bcc (list[str] | None): Blind copies (envelope only).
+        - from_address (str): Override the From header to reply as a different
+          address (e.g. a Gmail Send-as alias). Empty → account default.
         - attachments (list[str] | None): Absolute local file paths to attach.
         - signature (str): "default" | "" | custom plain-text.
         - verify_bounce_window_seconds (int): >0 → bounded DSN probe.
@@ -435,6 +449,7 @@ def message_reply(client: MailClient, p: MessageReplyPayload) -> dict:
         attachments=p.attachments,
         signature=p.signature,
         subject_override=p.subject_override,
+        from_address=p.from_address,
     )
     saved_to_sent = False
     sent_folder = ""
@@ -494,6 +509,8 @@ def message_forward(client: MailClient, p: MessageForwardPayload) -> dict:
         - body_text (str): Text prepended above the forward.
         - cc (list[str] | None): Visible carbon copies.
         - bcc (list[str] | None): Blind copies (envelope only).
+        - from_address (str): Override the From header to forward as a different
+          address (e.g. a Gmail Send-as alias). Empty → account default.
         - signature (str): "default" | "" | custom plain-text.
         - verify_bounce_window_seconds (int): >0 → bounded DSN probe.
         - folder (str): Folder of the original message (default INBOX).
@@ -523,6 +540,7 @@ def message_forward(client: MailClient, p: MessageForwardPayload) -> dict:
         bcc=p.bcc,
         signature=p.signature,
         subject_override=p.subject_override,
+        from_address=p.from_address,
     )
     saved_to_sent = False
     sent_folder = ""
@@ -608,6 +626,7 @@ def message_draft(client: MailClient, p: MessageDraftPayload) -> dict:
         bcc=p.bcc,
         signature=p.signature,
         attachments=p.attachments,
+        from_address=p.from_address,
     )
     client.imap().append_message(p.drafts_folder, raw_bytes, flags=["\\Draft"])
     return {

@@ -64,9 +64,7 @@ class ZimbraSOAPClient:
                 return ET.fromstring(response.read())
         except urllib.error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
-            raise MailProxyError(
-                f"Zimbra SOAP HTTP {exc.code}: {body[:500]}"
-            ) from exc
+            raise MailProxyError(f"Zimbra SOAP HTTP {exc.code}: {body[:500]}") from exc
         except (OSError, ET.ParseError) as exc:
             raise MailProxyError(f"Zimbra SOAP request failed: {exc}") from exc
 

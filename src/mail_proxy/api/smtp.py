@@ -266,6 +266,7 @@ class SMTPClient:
         message_id: str = "",
         signature: str = "default",
         attachments: list[str] | None = None,
+        from_address: str = "",
     ) -> MIMEMultipart:
         """Build the full MIME message (headers + body + signature + files).
 
@@ -281,6 +282,10 @@ class SMTPClient:
             message_id (str): Explicit Message-ID ("" → generated).
             signature (str): "default" | "" | custom text.
             attachments (list[str] | None): Absolute file paths to attach.
+            from_address (str): Override the From header (e.g. Send-as alias).
+                Empty string → use account default. The envelope sender (SMTP
+                auth) always remains the primary account — only the visible
+                From header changes.
 
         Returns:
             MIMEMultipart: The complete message.
@@ -339,7 +344,7 @@ class SMTPClient:
                 root.attach(part)
 
         root["From"] = formataddr(
-            (self.account.display_name, self.account.from_address)
+            (self.account.display_name, from_address or self.account.from_address)
         )
         root["To"] = ", ".join(to)
         if cc:
@@ -385,6 +390,7 @@ class SMTPClient:
         bcc: list[str] | None = None,
         signature: str = "default",
         attachments: list[str] | None = None,
+        from_address: str = "",
     ) -> str:
         """Send a new message.
 
@@ -397,6 +403,7 @@ class SMTPClient:
             bcc (list[str] | None): Blind copies — SMTP envelope only.
             signature (str): "default" | "" | custom text.
             attachments (list[str] | None): Absolute file paths.
+            from_address (str): Override From header (Send-as alias).
 
         Returns:
             str: The Message-ID of the submitted message.
@@ -417,6 +424,7 @@ class SMTPClient:
             bcc,
             signature=signature,
             attachments=attachments,
+            from_address=from_address,
         )
         mid = msg["Message-ID"]
         all_rcpt = to + (cc or []) + (bcc or [])
@@ -441,6 +449,7 @@ class SMTPClient:
         attachments: list[str] | None = None,
         signature: str = "default",
         subject_override: str | None = None,
+        from_address: str = "",
     ) -> str:
         """Reply to an existing message (proper Re:/In-Reply-To/References).
 
@@ -454,6 +463,7 @@ class SMTPClient:
             signature (str): "default" | "" | custom text.
             subject_override (str | None): Exact subject to use instead of
                 the auto-computed "Re: <original>".
+            from_address (str): Override From header (Send-as alias).
 
         Returns:
             str: The Message-ID of the reply.
@@ -496,6 +506,7 @@ class SMTPClient:
             in_reply_to=original.message_id,
             references=refs,
             signature=signature,
+            from_address=from_address,
         )
         mid = msg["Message-ID"]
         all_rcpt = to_list + cc_list + (bcc or [])
@@ -519,6 +530,7 @@ class SMTPClient:
         bcc: list[str] | None = None,
         signature: str = "default",
         subject_override: str | None = None,
+        from_address: str = "",
     ) -> str:
         """Forward a message (Fwd: prefix + quoted original).
 
@@ -529,6 +541,7 @@ class SMTPClient:
             cc (list[str] | None): Visible carbon copies.
             bcc (list[str] | None): Blind copies — SMTP envelope only.
             signature (str): "default" | "" | custom text.
+            from_address (str): Override From header (Send-as alias).
             subject_override (str | None): Exact subject to use instead of
                 the auto-computed "Fwd: <original>".
 
@@ -568,6 +581,7 @@ class SMTPClient:
             cc=cc,
             bcc=bcc,
             signature=signature,
+            from_address=from_address,
         )
         mid = msg["Message-ID"]
         all_rcpt = to + (cc or []) + (bcc or [])
@@ -592,6 +606,7 @@ class SMTPClient:
         bcc: list[str] | None = None,
         signature: str = "default",
         attachments: list[str] | None = None,
+        from_address: str = "",
     ) -> tuple[bytes, str]:
         """Build a draft as raw bytes for IMAP APPEND.
 
@@ -622,5 +637,6 @@ class SMTPClient:
             bcc,
             signature=signature,
             attachments=attachments,
+            from_address=from_address,
         )
         return msg.as_bytes(), msg["Message-ID"]
