@@ -380,7 +380,10 @@ def message_search(client: MailClient, p: MessageSearchPayload) -> list[dict]:
     `subject_pattern`, `body_pattern` (expensive — fetches full bodies).
 
     Parameters:
-        - query (str | None): Text match in subject OR body.
+        - query (str | None): Raw text match in subject OR body. Do NOT use
+          IMAP prefixes like `subject:`, `to:`, `from:` — this is a plain text
+          term. Use `subject_filter`, `sender`, `to_filter` etc. for targeted
+          searches.
         - sender (str | None): FROM substring.
         - sender_pattern (str | None): Regex on From address.
         - subject_filter (str | None): SUBJECT substring.

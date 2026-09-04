@@ -59,6 +59,10 @@
     <h2>📧 Email Fields <span class="field-label">editable</span></h2>
     <div class="hitl-card-body">
       <div class="email-field">
+        <label>From (Send-as) <span style="text-transform:none;font-weight:400;opacity:.6">(optional alias override)</span></label>
+        <input type="text" id="field-from" placeholder="alias@example.com (optional)">
+      </div>
+      <div class="email-field">
         <label>To <span id="to-hint" style="text-transform:none;font-weight:400;opacity:.6"></span></label>
         <input type="text" id="field-to" placeholder="recipient@example.com">
       </div>
@@ -141,7 +145,8 @@ try {
 }
 if (payload.account_id || document.getElementById('hitl-account-email').textContent) {
   var email = document.getElementById('hitl-account-email').textContent;
-  var label = payload.account_id + (email ? ' — ' + email : '');
+  var fromAddr = payload.from_address ? ' ➔ From: ' + payload.from_address : '';
+  var label = payload.account_id + (email ? ' — ' + email : '') + fromAddr;
   document.getElementById('account-badge').innerHTML =
     '<span style="background:#0f3460;color:#e2e8f0;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;letter-spacing:0.5px">📧 ' +
     label + '</span>';
@@ -165,6 +170,7 @@ if (originalMsg.verb) {
 
 // Populate email fields from payload
 function populateFields() {
+  document.getElementById('field-from').value = payload.from_address || '';
   document.getElementById('field-to').value = listToStr(payload.to);
   document.getElementById('field-cc').value = listToStr(payload.cc);
   document.getElementById('field-bcc').value = listToStr(payload.bcc);
@@ -226,6 +232,8 @@ function renderAttachments(files) {
 
 function gatherPayload() {
   var p = JSON.parse(JSON.stringify(ORIGINAL));
+  var fromVal = document.getElementById('field-from').value.trim();
+  if (fromVal) { p.from_address = fromVal; } else { delete p.from_address; }
   var to = strToList(document.getElementById('field-to').value);
   if (to) p.to = to;
   var cc = strToList(document.getElementById('field-cc').value);

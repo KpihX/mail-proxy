@@ -98,7 +98,8 @@ try {
 document.getElementById('payload').value = JSON.stringify(payload, null, 2);
 if (payload.account_id || document.getElementById('hitl-account-email').textContent) {
   var email = document.getElementById('hitl-account-email').textContent;
-  var label = payload.account_id + (email ? ' — ' + email : '');
+  var fromAddr = payload.from_address ? ' ➔ From: ' + payload.from_address : '';
+  var label = payload.account_id + (email ? ' — ' + email : '') + fromAddr;
   document.getElementById('account-badge').innerHTML =
     '<span style="background:#0f3460;color:#e2e8f0;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:600;letter-spacing:0.5px">📧 ' +
     label + '</span>';
