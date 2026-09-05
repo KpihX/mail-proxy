@@ -6,8 +6,8 @@ Mail administrative proxy — RPC CLI for IMAP/SMTP accounts, messages, folders 
 > authoritative action, HITL, verification, and transport contracts.
 
 Refonte of [`mail-mcp`](https://github.com/KpihX/mail-mcp) (MCP server, 25 tools) into a non-MCP
-CLI built on the exact model of [`tick-proxy`](https://github.com/KpihX/tick-proxy), itself built
-on the ADN of [`tg-proxy`](https://github.com/KpihX/tg-proxy).
+CLI built on the exact model of [`tick-proxy`](https://github.com/kpihx-labs/tick-proxy), itself built
+on the ADN of [`tg-proxy`](https://github.com/kpihx-labs/tg-proxy).
 
 ---
 

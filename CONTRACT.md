@@ -682,7 +682,7 @@ with the mail-mcp tool outputs.
 | `git-install-hooks` | pre-commit → `make check` |
 | `release` | `check` → `git-push` → `uv-publish` |
 
-**Remotes:** `github: git@github.com:KpihX/mail-proxy.git` · `gitlab: git@gitlab.com:kpihx/mail-proxy.git`
+**Remotes:** `github: git@github.com:kpihx-labs/mail-proxy.git` · `gitlab: git@gitlab.com:kpihx-labs/proxies/mail-proxy.git`
 
 ---
 
